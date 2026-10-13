@@ -1,0 +1,21 @@
+root = "."
+tmp_dir = "tmp"
+env_files = [".env"]
+
+[build]
+cmd = "go build -o ./tmp/fogwatch ."
+entrypoint = ["./tmp/fogwatch"]
+include_ext = ["go"]
+exclude_dir = ["tmp", "bin", "data"]
+exclude_regex = ["_test\\.go$"]
+stop_on_error = true
+# SIGINT first so the bot closes SQLite and the long poll cleanly.
+send_interrupt = true
+kill_delay = 3000 # ms
+
+[misc]
+clean_on_exit = true
+
+[build.windows]
+cmd = "go build -o ./tmp/fogwatch.exe ."
+entrypoint = ["tmp\\fogwatch.exe"]

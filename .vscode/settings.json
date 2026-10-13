@@ -1,0 +1,12 @@
+{
+  // Tasks (incl. the Task extension) run through this wrapper so closing or
+  // terminating a task terminal stops the bot. See the script for details.
+  "terminal.integrated.automationProfile.linux": {
+    "path": "bash",
+    "args": [".vscode/task-shell.sh"]
+  },
+  "terminal.integrated.automationProfile.osx": {
+    "path": "bash",
+    "args": [".vscode/task-shell.sh"]
+  }
+}

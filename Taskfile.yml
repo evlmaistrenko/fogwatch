@@ -1,0 +1,63 @@
+# Task runner (https://taskfile.dev). Install once: brew/winget/scoop install go-task,
+# or `go install github.com/go-task/task/v3/cmd/task@latest`. List tasks: `task`.
+version: '3'
+
+dotenv: ['.env'] # skipped if missing
+
+vars:
+  BIN: bin/fogwatch{{exeExt}}
+  # Override: task build VERSION=1.2.3
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+  AIR: go run github.com/air-verse/air@v1.67.4 # or AIR=air if installed
+  LEFTHOOK_VERSION: v2.1.17
+
+tasks:
+  default:
+    silent: true
+    cmds:
+      - task --list
+
+  dev:
+    desc: Run with hot reload (air)
+    cmds:
+      - '{{.AIR}}'
+
+  build:
+    desc: Build a static binary into bin/
+    env: { CGO_ENABLED: '0' }
+    cmds:
+      - go build -trimpath -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BIN}} .
+
+  start:
+    desc: Build and run
+    deps: [build]
+    cmds:
+      - './{{.BIN}}'
+
+  test:
+    desc: go vet + go test
+    cmds:
+      - go vet ./...
+      - go test ./...
+
+  tidy:
+    desc: go mod tidy
+    cmds:
+      - go mod tidy
+
+  docker:
+    desc: Build the Docker image
+    cmds:
+      - docker build --build-arg VERSION={{.VERSION}} -t fogwatch .
+
+  hooks:
+    desc: Install git hooks via lefthook (once per clone)
+    cmds:
+      - go install github.com/evilmartians/lefthook/v2@{{.LEFTHOOK_VERSION}}
+      - lefthook install
+
+  clean:
+    desc: Remove build output
+    cmds:
+      - rm -rf bin tmp

@@ -1,0 +1,27 @@
+# Git hooks. Setup once per clone: `task hooks` (or brew install lefthook && lefthook install).
+# Bypass in an emergency: git commit --no-verify. CI checks the PR title anyway.
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: gofmt
+      glob: "*.go"
+      run: |
+        files=$(gofmt -l {staged_files})
+        [ -z "$files" ] || { echo "$files"; echo "Fix with: gofmt -w ."; exit 1; }
+    - name: vet
+      glob: "*.go"
+      run: go vet ./...
+
+commit-msg:
+  jobs:
+    - name: conventional
+      run: |
+        head -1 {1} | grep -qE '^((feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)!?: .+|Merge .+|Revert .+|(fixup|squash)! .+)$' || {
+          echo "Commit message must be '<type>[!]: <description>' (no scope), e.g.:"
+          echo "  feat: add drops tracking"
+          echo "  fix: handle empty expiry"
+          echo "  feat!: breaking change"
+          echo "Types: feat fix perf revert refactor test docs style build ci chore"
+          exit 1
+        }

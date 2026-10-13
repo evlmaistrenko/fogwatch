@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # Maintains the release PR; when that PR is merged, this run creates the
+  # tag + GitHub release and the image job below publishes the version.
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      created: ${{ steps.rp.outputs.release_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  image:
+    needs: release-please
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      CREATED: ${{ needs.release-please.outputs.created == 'true' }}
+      TAG: ${{ needs.release-please.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go vet ./... && go test ./...
+
+      - name: Version
+        id: version
+        run: |
+          if [ "$CREATED" = "true" ]; then v="${TAG#v}"; else v="main-${GITHUB_SHA::7}"; fi
+          echo "value=$v" >> "$GITHUB_OUTPUT"
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+            docker.io/${{ vars.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+          flavor: latest=false
+          # Every main push: main, sha-xxxxxxx.
+          # Release: 1.2.3, 1.2, 1 (not for 0.x), latest.
+          tags: |
+            type=raw,value=main
+            type=sha,format=short
+            type=semver,pattern={{version}},value=${{ env.TAG }},enable=${{ env.CREATED }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ env.CREATED }}
+            type=semver,pattern={{major}},value=${{ env.TAG }},enable=${{ env.CREATED == 'true' && !startsWith(env.TAG, 'v0.') }}
+            type=raw,value=latest,enable=${{ env.CREATED }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ steps.version.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

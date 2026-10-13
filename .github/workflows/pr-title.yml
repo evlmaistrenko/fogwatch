@@ -1,0 +1,36 @@
+name: PR title
+
+# release-please reads commits on main; with squash merge the PR title becomes
+# the commit message, so it must follow Conventional Commits.
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+    branches: [main]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  conventional:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Keep in sync with CONTRIBUTING.md and lefthook.yml.
+          types: |
+            feat
+            fix
+            perf
+            revert
+            refactor
+            test
+            docs
+            style
+            build
+            ci
+            chore
+          # No scopes at all (patterns are wrapped in ^ $).
+          disallowScopes: |
+            .+
