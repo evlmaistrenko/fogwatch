@@ -92,15 +92,10 @@ Admin (shown in the admin's menu):
 
 ## Storage
 
-SQLite (pure Go driver, no cgo) at `data/db.sqlite` relative to the working
-dir, `/data` volume in Docker. WAL mode, schema via GORM AutoMigrate:
-
-    codes       code PK, reward_en, reward_ru, expires, source, url,
-                status (pending|published|removed), created_at
-    users       id PK (Telegram id), client_lang (follows Telegram),
-                lang (explicit /lang choice, '' = follow client), created_at
-
-Back up `data/` to keep users and codes.
+Users and codes live in SQLite at `data/db.sqlite` (relative to the working
+dir; `./data` in the Compose example). The schema is created and extended
+automatically at start. WAL mode: back up all `db.sqlite*` files with the bot
+stopped, or use `sqlite3 data/db.sqlite ".backup backup.sqlite"`.
 
 ## Development
 
