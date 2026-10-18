@@ -2,8 +2,10 @@ name: PR title
 
 # release-please reads commits on main; with squash merge the PR title becomes
 # the commit message, so it must follow Conventional Commits.
+# pull_request (not _target): it runs together with CI when workflows on the
+# release-please PR are approved.
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, edited, reopened, synchronize]
     branches: [main]
 
