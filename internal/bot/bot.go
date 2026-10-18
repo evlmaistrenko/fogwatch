@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -9,6 +9,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"fogwatch/internal/ai"
+	"fogwatch/internal/i18n"
+	"fogwatch/internal/store"
+	"fogwatch/internal/telegram"
 )
 
 var (
@@ -19,9 +24,9 @@ var (
 const allChunk = 40 // lines per /all message (text limit 4096)
 
 type Bot struct {
-	tg      *TG
-	st      *Store
-	ai      *AI
+	tg      *telegram.Client
+	st      *store.Store
+	ai      *ai.Client
 	admins  map[int64]bool
 	loc     *time.Location
 	fetchMu sync.Mutex
@@ -37,6 +42,51 @@ const (
 	fetchAlertAfter    = 2   // consecutive scheduled failures before admins hear about it
 )
 
+func New(tg *telegram.Client, st *store.Store, llm *ai.Client, admins map[int64]bool, loc *time.Location) *Bot {
+	return &Bot{tg: tg, st: st, ai: llm, admins: admins, loc: loc}
+}
+
+// SetupMenus sets the command menus: default for everyone, extended for
+// admins. "en" is the fallback for all other client languages. An admin's
+// chat menu fails with "chat not found" until they've pressed /start once;
+// restart after that.
+func (b *Bot) SetupMenus(ctx context.Context) {
+	for lang, cmds := range i18n.Commands {
+		code := lang
+		if lang == "en" {
+			code = ""
+		}
+		if err := b.tg.SetCommands(ctx, cmds, code, 0); err != nil {
+			log.Printf("setMyCommands %s: %v", lang, err)
+		}
+		for id := range b.admins {
+			all := append(append([]telegram.Cmd{}, cmds...), i18n.AdminCommands[lang]...)
+			if err := b.tg.SetCommands(ctx, all, code, id); err != nil {
+				log.Printf("setMyCommands admin %d %s: %v", id, lang, err)
+			}
+		}
+	}
+}
+
+// Run long-polls Telegram and handles updates until ctx is cancelled.
+func (b *Bot) Run(ctx context.Context) {
+	offset := 0
+	for ctx.Err() == nil {
+		ups, err := b.tg.Updates(ctx, offset)
+		if err != nil {
+			if ctx.Err() == nil {
+				log.Printf("getUpdates: %v", err)
+				time.Sleep(3 * time.Second)
+			}
+			continue
+		}
+		for _, u := range ups {
+			offset = u.UpdateID + 1
+			b.Handle(ctx, u)
+		}
+	}
+}
+
 func (b *Bot) today() string { return time.Now().In(b.loc).Format(time.DateOnly) }
 
 func normCode(s string) string { return strings.ToUpper(strings.TrimSpace(s)) }
@@ -51,25 +101,25 @@ func validDate(s string) bool {
 
 // ---------- rendering ----------
 
-func codeLine(lang string, c Code) string {
+func codeLine(lang string, c store.Code) string {
 	s := "<code>" + html.EscapeString(c.Code) + "</code>"
 	if r := c.Reward(lang); r != "" {
 		s += " — " + html.EscapeString(r)
 	}
 	if c.Expires != "" {
-		s += " · " + T(lang, "until", c.Expires)
+		s += " · " + i18n.T(lang, "until", c.Expires)
 	}
 	return s
 }
 
 // codeMsg is one code per message: delete the message once redeemed.
-func codeMsg(lang, icon string, c Code) (string, *Keyboard) {
-	return icon + " " + codeLine(lang, c), &Keyboard{InlineKeyboard: [][]Button{{
-		{Text: "📋 " + T(lang, "copy"), CopyText: &CopyText{Text: c.Code}},
+func codeMsg(lang, icon string, c store.Code) (string, *telegram.Keyboard) {
+	return icon + " " + codeLine(lang, c), &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{{
+		{Text: "📋 " + i18n.T(lang, "copy"), CopyText: &telegram.CopyText{Text: c.Code}},
 	}}}
 }
 
-func (b *Bot) sendCodes(ctx context.Context, chat int64, lang, icon string, codes []Code) error {
+func (b *Bot) sendCodes(ctx context.Context, chat int64, lang, icon string, codes []store.Code) error {
 	for _, c := range codes {
 		text, kb := codeMsg(lang, icon, c)
 		if err := b.tg.Send(ctx, chat, text, kb); err != nil {
@@ -81,7 +131,7 @@ func (b *Bot) sendCodes(ctx context.Context, chat int64, lang, icon string, code
 
 // ---------- updates ----------
 
-func (b *Bot) Handle(ctx context.Context, u Update) {
+func (b *Bot) Handle(ctx context.Context, u telegram.Update) {
 	switch {
 	case u.Message != nil:
 		b.onMessage(ctx, u.Message)
@@ -90,7 +140,7 @@ func (b *Bot) Handle(ctx context.Context, u Update) {
 	}
 }
 
-func (b *Bot) reply(ctx context.Context, chatID int64, text string, kb *Keyboard) {
+func (b *Bot) reply(ctx context.Context, chatID int64, text string, kb *telegram.Keyboard) {
 	if err := b.tg.Send(ctx, chatID, text, kb); err != nil {
 		log.Printf("send %d: %v", chatID, err)
 	}
@@ -99,15 +149,15 @@ func (b *Bot) reply(ctx context.Context, chatID int64, text string, kb *Keyboard
 // dbFail logs a store error and tells the user something went wrong.
 func (b *Bot) dbFail(ctx context.Context, chat int64, lang string, err error) {
 	log.Printf("db: %v", err)
-	b.reply(ctx, chat, T(lang, "db_err"), nil)
+	b.reply(ctx, chat, i18n.T(lang, "db_err"), nil)
 }
 
-func (b *Bot) onMessage(ctx context.Context, m *Message) {
+func (b *Bot) onMessage(ctx context.Context, m *telegram.Message) {
 	if m.From == nil || m.Chat.Type != "private" || m.Text == "" {
 		return
 	}
 	uid, chat := m.From.ID, m.Chat.ID
-	lang, err := b.st.Touch(uid, detectLang(m.From.LanguageCode))
+	lang, err := b.st.Touch(uid, i18n.Detect(m.From.LanguageCode))
 	if err != nil {
 		b.dbFail(ctx, chat, b.st.Lang(uid), err)
 		return
@@ -129,13 +179,13 @@ func (b *Bot) onMessage(ctx context.Context, m *Message) {
 	case "/codes":
 		b.cmdCodes(ctx, chat, lang)
 	case "/lang":
-		b.reply(ctx, chat, T(lang, "pick_lang"), &Keyboard{InlineKeyboard: [][]Button{
+		b.reply(ctx, chat, i18n.T(lang, "pick_lang"), &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{
 			{{Text: "Русский", CallbackData: "l:ru"}, {Text: "English", CallbackData: "l:en"}},
-			{{Text: T(lang, "lang_auto_btn"), CallbackData: "l:auto"}},
+			{{Text: i18n.T(lang, "lang_auto_btn"), CallbackData: "l:auto"}},
 		}})
 	case "/add", "/del", "/fetch", "/all", "/pending":
 		if !isAdmin {
-			b.reply(ctx, chat, T(lang, "no_access"), nil)
+			b.reply(ctx, chat, i18n.T(lang, "no_access"), nil)
 			return
 		}
 		switch cmd {
@@ -161,9 +211,9 @@ func (b *Bot) onMessage(ctx context.Context, m *Message) {
 }
 
 func (b *Bot) help(lang string, isAdmin bool) string {
-	t := T(lang, "help")
+	t := i18n.T(lang, "help")
 	if isAdmin {
-		t += T(lang, "admin_help")
+		t += i18n.T(lang, "admin_help")
 	}
 	return t
 }
@@ -174,7 +224,7 @@ func (b *Bot) cmdCodes(ctx context.Context, chat int64, lang string) {
 	case err != nil:
 		b.dbFail(ctx, chat, lang, err)
 	case len(codes) == 0:
-		b.reply(ctx, chat, T(lang, "no_codes"), nil)
+		b.reply(ctx, chat, i18n.T(lang, "no_codes"), nil)
 	default:
 		if err := b.sendCodes(ctx, chat, lang, "🎁", codes); err != nil {
 			log.Printf("send codes %d: %v", chat, err)
@@ -190,17 +240,17 @@ func (b *Bot) cmdAll(ctx context.Context, chat int64, lang string) {
 		return
 	}
 	if len(codes) == 0 {
-		b.reply(ctx, chat, T(lang, "no_codes"), nil)
+		b.reply(ctx, chat, i18n.T(lang, "no_codes"), nil)
 		return
 	}
 	today := b.today()
 	for i := 0; i < len(codes); i += allChunk {
 		var sb strings.Builder
-		sb.WriteString(T(lang, "all"))
+		sb.WriteString(i18n.T(lang, "all"))
 		for _, c := range codes[i:min(i+allChunk, len(codes))] {
 			icon := "🎁"
 			switch {
-			case c.Status == StatusPending:
+			case c.Status == store.StatusPending:
 				icon = "⏳"
 			case !c.Active(today):
 				icon = "⌛"
@@ -211,7 +261,7 @@ func (b *Bot) cmdAll(ctx context.Context, chat int64, lang string) {
 	}
 }
 
-func (b *Bot) onCallback(ctx context.Context, q *CallbackQuery) {
+func (b *Bot) onCallback(ctx context.Context, q *telegram.CallbackQuery) {
 	kind, val, _ := strings.Cut(q.Data, ":")
 	switch kind {
 	case "l":
@@ -228,7 +278,7 @@ func (b *Bot) onCallback(ctx context.Context, q *CallbackQuery) {
 			log.Printf("db: %v", err)
 			return
 		}
-		lang, err := b.st.Touch(q.From.ID, detectLang(q.From.LanguageCode))
+		lang, err := b.st.Touch(q.From.ID, i18n.Detect(q.From.LanguageCode))
 		if err != nil {
 			log.Printf("db: %v", err)
 			return
@@ -238,7 +288,7 @@ func (b *Bot) onCallback(ctx context.Context, q *CallbackQuery) {
 			key = "lang_auto_set"
 		}
 		if q.Message != nil {
-			_ = b.tg.EditText(ctx, q.Message.Chat.ID, q.Message.MessageID, T(lang, key), nil)
+			_ = b.tg.EditText(ctx, q.Message.Chat.ID, q.Message.MessageID, i18n.T(lang, key), nil)
 		}
 	case "ok", "no":
 		b.onModerate(ctx, q, kind == "ok", val)
@@ -250,21 +300,21 @@ func (b *Bot) onCallback(ctx context.Context, q *CallbackQuery) {
 // ---------- moderation ----------
 
 // modCard is what admins see for a pending code.
-func modCard(lang string, c Code) (string, *Keyboard) {
-	text := T(lang, "mod_title") + "\n" + codeLine(lang, c)
+func modCard(lang string, c store.Code) (string, *telegram.Keyboard) {
+	text := i18n.T(lang, "mod_title") + "\n" + codeLine(lang, c)
 	if c.URL != "" {
-		text += "\n" + T(lang, "source") + ": " + html.EscapeString(c.URL)
+		text += "\n" + i18n.T(lang, "source") + ": " + html.EscapeString(c.URL)
 	}
-	return text, &Keyboard{InlineKeyboard: [][]Button{
-		{{Text: "📋 " + T(lang, "copy"), CopyText: &CopyText{Text: c.Code}}},
+	return text, &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{
+		{{Text: "📋 " + i18n.T(lang, "copy"), CopyText: &telegram.CopyText{Text: c.Code}}},
 		{
-			{Text: T(lang, "btn_approve"), CallbackData: "ok:" + c.Code},
-			{Text: T(lang, "btn_reject"), CallbackData: "no:" + c.Code},
+			{Text: i18n.T(lang, "btn_approve"), CallbackData: "ok:" + c.Code},
+			{Text: i18n.T(lang, "btn_reject"), CallbackData: "no:" + c.Code},
 		},
 	}}
 }
 
-func (b *Bot) sendModCards(ctx context.Context, chat int64, lang string, codes []Code) {
+func (b *Bot) sendModCards(ctx context.Context, chat int64, lang string, codes []store.Code) {
 	for _, c := range codes {
 		text, kb := modCard(lang, c)
 		if err := b.tg.Send(ctx, chat, text, kb); err != nil {
@@ -275,7 +325,7 @@ func (b *Bot) sendModCards(ctx context.Context, chat int64, lang string, codes [
 }
 
 // askAdmins sends new pending codes to every admin.
-func (b *Bot) askAdmins(ctx context.Context, codes []Code) {
+func (b *Bot) askAdmins(ctx context.Context, codes []store.Code) {
 	for id := range b.admins {
 		b.sendModCards(ctx, id, b.st.Lang(id), codes)
 	}
@@ -287,43 +337,43 @@ func (b *Bot) cmdPending(ctx context.Context, chat int64, lang string) {
 	case err != nil:
 		b.dbFail(ctx, chat, lang, err)
 	case len(codes) == 0:
-		b.reply(ctx, chat, T(lang, "no_pending"), nil)
+		b.reply(ctx, chat, i18n.T(lang, "no_pending"), nil)
 	default:
 		b.sendModCards(ctx, chat, lang, codes)
 	}
 }
 
-func (b *Bot) onModerate(ctx context.Context, q *CallbackQuery, approve bool, code string) {
+func (b *Bot) onModerate(ctx context.Context, q *telegram.CallbackQuery, approve bool, code string) {
 	lang := b.st.Lang(q.From.ID)
 	if !b.admins[q.From.ID] {
-		_ = b.tg.Answer(ctx, q.ID, T(lang, "no_access"))
+		_ = b.tg.Answer(ctx, q.ID, i18n.T(lang, "no_access"))
 		return
 	}
-	to, verdict := StatusRemoved, "rejected"
+	to, verdict := store.StatusRemoved, "rejected"
 	if approve {
-		to, verdict = StatusPublished, "approved"
+		to, verdict = store.StatusPublished, "approved"
 	}
 	c, ok, err := b.st.Moderate(code, to)
 	switch {
 	case err != nil:
 		log.Printf("db: %v", err)
-		_ = b.tg.Answer(ctx, q.ID, T(lang, "db_err"))
+		_ = b.tg.Answer(ctx, q.ID, i18n.T(lang, "db_err"))
 		return
 	case !ok:
-		_ = b.tg.Answer(ctx, q.ID, T(lang, "mod_done_already"))
+		_ = b.tg.Answer(ctx, q.ID, i18n.T(lang, "mod_done_already"))
 		return
 	}
-	_ = b.tg.Answer(ctx, q.ID, T(lang, verdict))
+	_ = b.tg.Answer(ctx, q.ID, i18n.T(lang, verdict))
 	if m := q.Message; m != nil {
 		// Same card, verdict appended, buttons reduced to copy.
 		text, _ := modCard(lang, c)
-		kb := &Keyboard{InlineKeyboard: [][]Button{{{Text: "📋 " + T(lang, "copy"), CopyText: &CopyText{Text: c.Code}}}}}
-		if err := b.tg.EditText(ctx, m.Chat.ID, m.MessageID, text+"\n\n"+T(lang, verdict), kb); err != nil {
+		kb := &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{{{Text: "📋 " + i18n.T(lang, "copy"), CopyText: &telegram.CopyText{Text: c.Code}}}}}
+		if err := b.tg.EditText(ctx, m.Chat.ID, m.MessageID, text+"\n\n"+i18n.T(lang, verdict), kb); err != nil {
 			log.Printf("edit: %v", err)
 		}
 	}
 	if approve {
-		go b.broadcast(context.WithoutCancel(ctx), []Code{c})
+		go b.broadcast(context.WithoutCancel(ctx), []store.Code{c})
 	}
 }
 
@@ -331,10 +381,10 @@ func (b *Bot) onModerate(ctx context.Context, q *CallbackQuery, approve bool, co
 
 func (b *Bot) adminAdd(ctx context.Context, chat int64, lang string, args []string) {
 	if len(args) == 0 || !codeRe.MatchString(normCode(args[0])) {
-		b.reply(ctx, chat, T(lang, "add_usage"), nil)
+		b.reply(ctx, chat, i18n.T(lang, "add_usage"), nil)
 		return
 	}
-	c := Code{Code: normCode(args[0]), Source: "admin"}
+	c := store.Code{Code: normCode(args[0]), Source: "admin"}
 	rest := args[1:]
 	if len(rest) > 0 && validDate(rest[0]) {
 		c.Expires, rest = rest[0], rest[1:]
@@ -347,16 +397,16 @@ func (b *Bot) adminAdd(ctx context.Context, chat int64, lang string, args []stri
 	case err != nil:
 		b.dbFail(ctx, chat, lang, err)
 	case isNew:
-		b.reply(ctx, chat, T(lang, "added", html.EscapeString(c.Code)), nil)
-		go b.broadcast(context.WithoutCancel(ctx), []Code{c})
+		b.reply(ctx, chat, i18n.T(lang, "added", html.EscapeString(c.Code)), nil)
+		go b.broadcast(context.WithoutCancel(ctx), []store.Code{c})
 	default:
-		b.reply(ctx, chat, T(lang, "updated", html.EscapeString(c.Code)), nil)
+		b.reply(ctx, chat, i18n.T(lang, "updated", html.EscapeString(c.Code)), nil)
 	}
 }
 
 func (b *Bot) adminDel(ctx context.Context, chat int64, lang string, args []string) {
 	if len(args) != 1 {
-		b.reply(ctx, chat, T(lang, "del_usage"), nil)
+		b.reply(ctx, chat, i18n.T(lang, "del_usage"), nil)
 		return
 	}
 	code := normCode(args[0])
@@ -365,23 +415,23 @@ func (b *Bot) adminDel(ctx context.Context, chat int64, lang string, args []stri
 	case err != nil:
 		b.dbFail(ctx, chat, lang, err)
 	case ok:
-		b.reply(ctx, chat, T(lang, "deleted", html.EscapeString(code)), nil)
+		b.reply(ctx, chat, i18n.T(lang, "deleted", html.EscapeString(code)), nil)
 	default:
-		b.reply(ctx, chat, T(lang, "not_found"), nil)
+		b.reply(ctx, chat, i18n.T(lang, "not_found"), nil)
 	}
 }
 
 func (b *Bot) adminFetch(ctx context.Context, chat int64, lang string) {
-	b.reply(ctx, chat, T(lang, "fetching"), nil)
+	b.reply(ctx, chat, i18n.T(lang, "fetching"), nil)
 	found, added, err := b.Fetch(ctx)
 	switch {
 	case errors.Is(err, errBusy):
-		b.reply(ctx, chat, T(lang, "fetch_busy"), nil)
+		b.reply(ctx, chat, i18n.T(lang, "fetch_busy"), nil)
 	case err != nil:
 		log.Printf("fetch (manual): %v", err)
-		b.reply(ctx, chat, T(lang, "fetch_err"), nil)
+		b.reply(ctx, chat, i18n.T(lang, "fetch_err"), nil)
 	default:
-		b.reply(ctx, chat, T(lang, "fetch_done", found, added), nil)
+		b.reply(ctx, chat, i18n.T(lang, "fetch_done", found, added), nil)
 	}
 }
 
@@ -406,9 +456,9 @@ func (b *Bot) Fetch(ctx context.Context) (found, added int, err error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	var fresh []Code // new pending codes
+	var fresh []store.Code // new pending codes
 	for _, f := range res {
-		c := Code{
+		c := store.Code{
 			Code:     normCode(f.Code),
 			RewardEN: trunc(f.RewardEN, 80),
 			RewardRU: trunc(f.RewardRU, 80),
@@ -430,7 +480,7 @@ func (b *Bot) Fetch(ctx context.Context) (found, added int, err error) {
 			return found, len(fresh), err
 		}
 		if isNew {
-			c.Status = StatusPending
+			c.Status = store.StatusPending
 			fresh = append(fresh, c)
 		}
 	}
@@ -454,11 +504,11 @@ func (b *Bot) ScheduledFetch(ctx context.Context) {
 		log.Printf("fetch (failure %d): %v", b.fetchFails, err)
 		if b.fetchFails >= fetchAlertAfter && !b.fetchAlerted {
 			b.fetchAlerted = true
-			b.tellAdmins(ctx, func(lang string) string { return T(lang, "fetch_alert", b.fetchFails) })
+			b.tellAdmins(ctx, func(lang string) string { return i18n.T(lang, "fetch_alert", b.fetchFails) })
 		}
 	default:
 		if b.fetchAlerted {
-			b.tellAdmins(ctx, func(lang string) string { return T(lang, "fetch_recovered") })
+			b.tellAdmins(ctx, func(lang string) string { return i18n.T(lang, "fetch_recovered") })
 		}
 		b.fetchFails, b.fetchAlerted = 0, false
 	}
@@ -471,7 +521,7 @@ func (b *Bot) tellAdmins(ctx context.Context, text func(lang string) string) {
 }
 
 // broadcast sends each new code as its own message to every user, once.
-func (b *Bot) broadcast(ctx context.Context, codes []Code) {
+func (b *Bot) broadcast(ctx context.Context, codes []store.Code) {
 	users, err := b.st.Users()
 	if err != nil {
 		log.Printf("db: %v", err)
@@ -480,7 +530,7 @@ func (b *Bot) broadcast(ctx context.Context, codes []Code) {
 	for id, lang := range users {
 		err := b.sendCodes(ctx, id, lang, "🆕", codes)
 		switch {
-		case isBlocked(err):
+		case telegram.IsBlocked(err):
 			if err := b.st.DeleteUser(id); err != nil {
 				log.Printf("db: %v", err)
 			}

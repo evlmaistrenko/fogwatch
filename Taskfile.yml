@@ -27,7 +27,7 @@ tasks:
     desc: Build a static binary into bin/
     env: { CGO_ENABLED: '0' }
     cmds:
-      - go build -trimpath -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BIN}} .
+      - go build -trimpath -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BIN}} ./cmd/fogwatch
 
   start:
     desc: Build and run

@@ -1,4 +1,4 @@
-package main
+package telegram
 
 // Minimal Telegram Bot API client: only what the bot needs.
 
@@ -13,16 +13,19 @@ import (
 	"time"
 )
 
-type TG struct {
+type Client struct {
 	base string
 	hc   *http.Client
 }
 
-func NewTG(token string) *TG {
-	return &TG{
-		base: "https://api.telegram.org/bot" + token + "/",
-		hc:   &http.Client{Timeout: 70 * time.Second},
-	}
+func New(token string) *Client {
+	return NewAt("https://api.telegram.org/bot" + token + "/")
+}
+
+// NewAt talks to base instead of the public API (a fake server in tests);
+// base ends with "/", method names are appended to it.
+func NewAt(base string) *Client {
+	return &Client{base: base, hc: &http.Client{Timeout: 70 * time.Second}}
 }
 
 type APIError struct {
@@ -33,12 +36,12 @@ type APIError struct {
 
 func (e *APIError) Error() string { return fmt.Sprintf("telegram %d: %s", e.Code, e.Desc) }
 
-func isBlocked(err error) bool {
+func IsBlocked(err error) bool {
 	var ae *APIError
 	return errors.As(err, &ae) && ae.Code == 403
 }
 
-type TUser struct {
+type User struct {
 	ID           int64  `json:"id"`
 	LanguageCode string `json:"language_code"`
 }
@@ -50,14 +53,14 @@ type Chat struct {
 
 type Message struct {
 	MessageID int    `json:"message_id"`
-	From      *TUser `json:"from"`
+	From      *User  `json:"from"`
 	Chat      Chat   `json:"chat"`
 	Text      string `json:"text"`
 }
 
 type CallbackQuery struct {
 	ID      string   `json:"id"`
-	From    TUser    `json:"from"`
+	From    User     `json:"from"`
 	Message *Message `json:"message"`
 	Data    string   `json:"data"`
 }
@@ -83,7 +86,7 @@ type Keyboard struct {
 }
 
 // call retries on 429 (Telegram flood control) using the advised delay.
-func (t *TG) call(ctx context.Context, method string, req, out any) error {
+func (t *Client) call(ctx context.Context, method string, req, out any) error {
 	for attempt := 0; ; attempt++ {
 		err := t.call1(ctx, method, req, out)
 		var ae *APIError
@@ -98,7 +101,7 @@ func (t *TG) call(ctx context.Context, method string, req, out any) error {
 	}
 }
 
-func (t *TG) call1(ctx context.Context, method string, req, out any) error {
+func (t *Client) call1(ctx context.Context, method string, req, out any) error {
 	b, err := json.Marshal(req)
 	if err != nil {
 		return err
@@ -138,7 +141,7 @@ func (t *TG) call1(ctx context.Context, method string, req, out any) error {
 	return nil
 }
 
-func (t *TG) Updates(ctx context.Context, offset int) ([]Update, error) {
+func (t *Client) Updates(ctx context.Context, offset int) ([]Update, error) {
 	var ups []Update
 	err := t.call(ctx, "getUpdates", map[string]any{
 		"offset":          offset,
@@ -148,7 +151,7 @@ func (t *TG) Updates(ctx context.Context, offset int) ([]Update, error) {
 	return ups, err
 }
 
-func (t *TG) Send(ctx context.Context, chatID int64, text string, kb *Keyboard) error {
+func (t *Client) Send(ctx context.Context, chatID int64, text string, kb *Keyboard) error {
 	req := map[string]any{
 		"chat_id":              chatID,
 		"text":                 text,
@@ -162,7 +165,7 @@ func (t *TG) Send(ctx context.Context, chatID int64, text string, kb *Keyboard) 
 }
 
 // EditText replaces a message's text; kb nil removes the inline keyboard.
-func (t *TG) EditText(ctx context.Context, chatID int64, msgID int, text string, kb *Keyboard) error {
+func (t *Client) EditText(ctx context.Context, chatID int64, msgID int, text string, kb *Keyboard) error {
 	req := map[string]any{
 		"chat_id": chatID, "message_id": msgID, "text": text, "parse_mode": "HTML",
 		"link_preview_options": map[string]any{"is_disabled": true},
@@ -173,7 +176,7 @@ func (t *TG) EditText(ctx context.Context, chatID int64, msgID int, text string,
 	return t.call(ctx, "editMessageText", req, nil)
 }
 
-func (t *TG) Answer(ctx context.Context, id, text string) error {
+func (t *Client) Answer(ctx context.Context, id, text string) error {
 	return t.call(ctx, "answerCallbackQuery", map[string]any{"callback_query_id": id, "text": text}, nil)
 }
 
@@ -184,7 +187,7 @@ type Cmd struct {
 
 // SetCommands sets the command menu. lang "" = fallback for all languages;
 // chatID 0 = default scope, otherwise only that chat (overrides the default).
-func (t *TG) SetCommands(ctx context.Context, cmds []Cmd, lang string, chatID int64) error {
+func (t *Client) SetCommands(ctx context.Context, cmds []Cmd, lang string, chatID int64) error {
 	req := map[string]any{"commands": cmds}
 	if lang != "" {
 		req["language_code"] = lang

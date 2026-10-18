@@ -1,4 +1,4 @@
-package main
+package store
 
 // SQLite via GORM. Driver is ncruces/go-sqlite3 (pure Go, no cgo),
 // so the binary still builds with CGO_ENABLED=0 for a static image.
@@ -65,7 +65,7 @@ func (c *Code) Reward(lang string) string {
 
 type Store struct{ db *gorm.DB }
 
-func OpenStore(path string) (*Store, error) {
+func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}

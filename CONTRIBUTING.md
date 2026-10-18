@@ -41,24 +41,29 @@ search, lets admins moderate them and broadcasts approved codes. Promo codes
 are the first feature; more (e.g. drops) will follow, so keep features
 separable.
 
-Single `package main`, flat layout:
+Packages under `internal/`, entry point in `cmd/`; config files stay in the
+root:
 
-| File | Responsibility |
-|------|----------------|
-| `main.go` | env config, wiring, cron schedule, long-poll loop |
-| `bot.go` | update handling, commands, moderation, broadcast, fetch job |
-| `store.go` | GORM models and all DB access (SQLite) |
-| `ai.go` | Responses API client (OpenAI / OpenRouter), web search, JSON schema |
-| `tg.go` | minimal hand-written Telegram Bot API client |
-| `i18n.go` | all user-facing texts (ru, en) and command menus |
-| `*_test.go` | tests |
+| Package | Responsibility |
+|---------|----------------|
+| `cmd/fogwatch` | env config, wiring, cron schedule |
+| `internal/bot` | update handling, commands, moderation, broadcast, fetch job, long-poll loop |
+| `internal/store` | GORM models and all DB access (SQLite) |
+| `internal/ai` | Responses API client (OpenAI / OpenRouter), web search, JSON schema |
+| `internal/telegram` | minimal hand-written Telegram Bot API client |
+| `internal/i18n` | all user-facing texts (ru, en) and command menus |
+
+Dependencies point one way: `bot` uses `store`, `ai`, `telegram` and `i18n`;
+those don't import `bot` or each other (`i18n` only uses `telegram.Cmd` for
+menus). Tests sit next to the code as `*_test.go`.
 
 ## Rules
 
 ### Dependencies
 - Standard library first. Current deps: GORM + `ncruces/go-sqlite3` (pure
   Go), `robfig/cron/v3`. Discuss any new module before adding it.
-- No Telegram or OpenAI SDKs: extend `tg.go` / `ai.go`.
+- No Telegram or OpenAI SDKs: extend `internal/telegram` /
+  `internal/ai`.
 - `go.mod` targets Go 1.27; CI, Docker and local builds use the same minor.
   Bump the `go` line, the Dockerfile base image and deps together, in their
   own `build:` PR — never as part of an unrelated change.
@@ -70,7 +75,7 @@ Single `package main`, flat layout:
 - New `NOT NULL` columns need a `default`, or startup fails on existing data.
 - Renames, drops and data migrations are manual: put the SQL in the PR
   description; don't encode them in Go.
-- All queries live in `store.go`; `bot.go` never touches `*gorm.DB`.
+- All queries live in `internal/store`; no other package touches `*gorm.DB`.
 - State changes that can race (e.g. moderation) use conditional updates
   (`UPDATE … WHERE status = ?`) and check `RowsAffected`.
 
@@ -81,11 +86,12 @@ Single `package main`, flat layout:
   (moderation). Admin-only callbacks re-check `b.admins`.
 - One code per message with a `copy_text` button; users delete the message to
   mark a code as used. No per-user code state — keep it that way.
-- Never log the bot token (`tg.go` strips URLs from errors).
+- Never log the bot token (`internal/telegram` strips URLs from
+  errors).
 
 ### Texts
-- Every user-facing string goes through `T(lang, key)` and exists in both
-  `ru` and `en` in `i18n.go`. Command menus live there too.
+- Every user-facing string goes through `i18n.T(lang, key)` and exists in
+  both `ru` and `en` in `internal/i18n`. Command menus live there too.
 
 ### Behaviour to preserve
 - No LLM call on startup; search runs on the cron and via admin `/fetch`.

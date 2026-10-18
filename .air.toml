@@ -3,7 +3,7 @@ tmp_dir = "tmp"
 env_files = [".env"]
 
 [build]
-cmd = "go build -o ./tmp/fogwatch ."
+cmd = "go build -o ./tmp/fogwatch ./cmd/fogwatch"
 entrypoint = ["./tmp/fogwatch"]
 include_ext = ["go"]
 exclude_dir = ["tmp", "bin", "data"]
@@ -17,5 +17,5 @@ kill_delay = 3000 # ms
 clean_on_exit = true
 
 [build.windows]
-cmd = "go build -o ./tmp/fogwatch.exe ."
+cmd = "go build -o ./tmp/fogwatch.exe ./cmd/fogwatch"
 entrypoint = ["tmp\\fogwatch.exe"]

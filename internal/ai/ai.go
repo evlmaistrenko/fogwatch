@@ -1,4 +1,4 @@
-package main
+package ai
 
 // Responses API (OpenAI or a compatible provider such as OpenRouter) with
 // web search and structured JSON output.
@@ -14,21 +14,21 @@ import (
 	"time"
 )
 
-type AI struct {
+type Client struct {
 	url, key, model string
 	tool            map[string]any // web search tool, provider-specific
 	hc              *http.Client
 }
 
-// NewAI: baseURL like https://api.openai.com/v1 or https://openrouter.ai/api/v1.
-func NewAI(baseURL, key, model string) *AI {
+// New: baseURL like https://api.openai.com/v1 or https://openrouter.ai/api/v1.
+func New(baseURL, key, model string) *Client {
 	baseURL = strings.TrimRight(baseURL, "/")
 	// OpenAI's built-in tool vs OpenRouter's server tool (works with any model).
 	tool := map[string]any{"type": "web_search"}
 	if strings.Contains(baseURL, "openrouter.ai") {
 		tool = map[string]any{"type": "openrouter:web_search"}
 	}
-	return &AI{
+	return &Client{
 		url: baseURL + "/responses", key: key, model: model, tool: tool,
 		hc: &http.Client{Timeout: 5 * time.Minute},
 	}
@@ -84,7 +84,7 @@ Already known codes, do not return them: %s.
 Return only codes that are not in this list; an empty list if there are none.`
 
 // Fetch searches for codes. known = codes already in the database (any status).
-func (a *AI) Fetch(ctx context.Context, today string, known []string) ([]Found, error) {
+func (a *Client) Fetch(ctx context.Context, today string, known []string) ([]Found, error) {
 	input := fmt.Sprintf(prompt, today)
 	if len(known) > 0 {
 		input += fmt.Sprintf(knownPrompt, strings.Join(known, ", "))

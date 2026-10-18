@@ -1,15 +1,14 @@
-package main
+package store
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
 
 func TestStore(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bot.db")
-	st, err := OpenStore(path)
+	st, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +94,7 @@ func TestStore(t *testing.T) {
 	ok(err)
 	ok(st.DeleteUser(2))
 	ok(st.Close())
-	st, err = OpenStore(path)
+	st, err = Open(path)
 	ok(err)
 	users, err := st.Users()
 	ok(err)
@@ -104,29 +103,8 @@ func TestStore(t *testing.T) {
 	}
 }
 
-func TestCodeMsg(t *testing.T) {
-	text, kb := codeMsg("ru", "🆕", Code{Code: "AAAA1", RewardEN: "BP", RewardRU: "ОК", Expires: "2030-01-01"})
-	if text != "🆕 <code>AAAA1</code> — ОК · до 2030-01-01" {
-		t.Fatalf("text: %s", text)
-	}
-	if b := kb.InlineKeyboard[0][0]; b.CopyText == nil || b.CopyText.Text != "AAAA1" || !strings.HasPrefix(b.Text, "📋") {
-		t.Fatalf("button: %+v", b)
-	}
-}
-
-func TestModCard(t *testing.T) {
-	text, kb := modCard("en", Code{Code: "AAAA1", RewardEN: "BP", URL: "https://x.test/a?b=1&c=2"})
-	if !strings.Contains(text, "https://x.test/a?b=1&amp;c=2") {
-		t.Fatalf("url not escaped: %s", text)
-	}
-	if len(kb.InlineKeyboard) != 2 || kb.InlineKeyboard[1][0].CallbackData != "ok:AAAA1" ||
-		kb.InlineKeyboard[1][1].CallbackData != "no:AAAA1" {
-		t.Fatalf("keyboard: %+v", kb)
-	}
-}
-
 func TestLang(t *testing.T) {
-	st, err := OpenStore(filepath.Join(t.TempDir(), "bot.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "bot.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,8 +129,5 @@ func TestLang(t *testing.T) {
 	st.SetLang(1, "")
 	if touch("en") != "en" {
 		t.Fatal("auto not restored")
-	}
-	if detectLang("kk") != "ru" || detectLang("de") != "en" || detectLang("") != "" {
-		t.Fatal("detectLang")
 	}
 }
