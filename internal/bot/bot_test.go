@@ -80,3 +80,53 @@ func TestScheduledFetchAlerts(t *testing.T) {
 		t.Fatalf("recovery: %q", sent)
 	}
 }
+
+func TestModerationSkipsAdmins(t *testing.T) {
+	// Fake Telegram: collect method + chat_id + text.
+	type call struct {
+		method string
+		chat   int64
+		text   string
+	}
+	var calls []call
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m struct {
+			ChatID int64 `json:"chat_id"`
+			Text   string
+		}
+		json.NewDecoder(r.Body).Decode(&m)
+		calls = append(calls, call{r.URL.Path[1:], m.ChatID, m.Text})
+		w.Write([]byte(`{"ok":true,"result":{}}`))
+	}))
+	defer tg.Close()
+
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := New(telegram.NewAt(tg.URL+"/"), st, nil, map[int64]bool{42: true}, time.UTC)
+	ctx := context.Background()
+	st.Touch(42, "en")
+	st.Touch(7, "en")
+
+	c := store.Code{Code: "AAAA1", Source: "ai"}
+	b.broadcast(ctx, []store.Code{c}, true)
+	if len(calls) != 1 || calls[0].chat != 7 {
+		t.Fatalf("skipAdmins: %+v", calls)
+	}
+	calls = nil
+	b.broadcast(ctx, []store.Code{c}, false)
+	if len(calls) != 2 {
+		t.Fatalf("all: %+v", calls)
+	}
+
+	// Stale card: the code was already published, the click shows that.
+	st.Upsert(c)
+	st.Moderate("AAAA1", store.StatusPublished)
+	calls = nil
+	q := &telegram.CallbackQuery{ID: "q", From: telegram.User{ID: 42}, Message: &telegram.Message{MessageID: 5, Chat: telegram.Chat{ID: 42}}}
+	b.onModerate(ctx, q, false, "AAAA1")
+	if len(calls) != 2 || calls[1].method != "editMessageText" || !strings.HasSuffix(calls[1].text, "✅ Published") {
+		t.Fatalf("stale card: %+v", calls)
+	}
+}

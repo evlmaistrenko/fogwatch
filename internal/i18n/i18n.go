@@ -41,6 +41,8 @@ var texts = map[string]map[string]string{
 		"approved":         "✅ Опубликован, рассылаю",
 		"rejected":         "❌ Отклонён",
 		"mod_done_already": "Уже обработан",
+		"mod_published":    "✅ Опубликован",
+		"mod_removed":      "❌ Отклонён или удалён",
 		"no_pending":       "Нет кодов на модерации.",
 
 		"fetch_alert":     "⚠️ Поиск кодов не работает: %d неудачных попыток подряд. Подробности в логах.",
@@ -80,6 +82,8 @@ var texts = map[string]map[string]string{
 		"approved":         "✅ Published, broadcasting",
 		"rejected":         "❌ Rejected",
 		"mod_done_already": "Already handled",
+		"mod_published":    "✅ Published",
+		"mod_removed":      "❌ Rejected or deleted",
 		"no_pending":       "Nothing awaiting moderation.",
 
 		"fetch_alert":     "⚠️ Code search is failing: %d attempts in a row. Details are in the logs.",
