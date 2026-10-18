@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/evlmaistrenko/fogwatch/compare/v0.1.1...v0.1.2) (2026-10-18)
+
+
+### Features
+
+* show bot version in help ([#8](https://github.com/evlmaistrenko/fogwatch/issues/8)) ([52a6543](https://github.com/evlmaistrenko/fogwatch/commit/52a6543d16064f12dfeca776beb994df7c76ffcb))
+
 ## [0.1.1](https://github.com/evlmaistrenko/fogwatch/compare/v0.1.0...v0.1.1) (2026-10-18)
 
 
