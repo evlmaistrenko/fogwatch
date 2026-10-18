@@ -156,3 +156,18 @@ menus). Tests sit next to the code as `*_test.go`.
 the next release triggered by another commit. Also accepted locally (never
 reach `main` with squash merge): `fixup! …`, `squash! …`, `Merge …`,
 `Revert …`.
+
+### CI and releases
+
+- PRs: `ci.yml` (gofmt, vet, tests, Docker build without push),
+  `pr-title.yml` (Conventional Commit title), `gemini-review.yml`.
+- Push to `main`: `release.yml` keeps the release-please PR up to date and
+  publishes `main` and `sha-xxxxxxx` images. Merging the release PR tags
+  `vX.Y.Z`, creates a GitHub release and publishes `X.Y.Z`, `X.Y`, `X` (from
+  1.0) and `latest` to GHCR and Docker Hub (linux/amd64, linux/arm64).
+
+Repository setup (once, for a fork or a new repo): variable
+`DOCKERHUB_USERNAME`, secret `DOCKERHUB_TOKEN` (Docker Hub access token,
+read/write); secret `GEMINI_API_KEY` (AI Studio), optional variable
+`GEMINI_MODEL`; Settings → Actions → General → "Allow GitHub Actions to create
+and approve pull requests".
