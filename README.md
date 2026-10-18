@@ -6,6 +6,8 @@ lets an admin approve them, and sends each approved code once to everyone
 who pressed /start.
 Storage: SQLite via GORM (ncruces/go-sqlite3, pure Go, no cgo).
 
+Try it: [@fogwatch_bot](https://t.me/fogwatch_bot).
+
 ## Run
 
     go mod tidy            # once: generates go.sum
