@@ -360,20 +360,36 @@ func (b *Bot) onModerate(ctx context.Context, q *telegram.CallbackQuery, approve
 		_ = b.tg.Answer(ctx, q.ID, i18n.T(lang, "db_err"))
 		return
 	case !ok:
+		// Stale card (second click, or another admin was faster): show the
+		// actual outcome instead.
 		_ = b.tg.Answer(ctx, q.ID, i18n.T(lang, "mod_done_already"))
+		if c.Code != "" {
+			outcome := "mod_removed"
+			if c.Status == store.StatusPublished {
+				outcome = "mod_published"
+			}
+			b.closeCard(ctx, q.Message, lang, c, outcome)
+		}
 		return
 	}
 	_ = b.tg.Answer(ctx, q.ID, i18n.T(lang, verdict))
-	if m := q.Message; m != nil {
-		// Same card, verdict appended, buttons reduced to copy.
-		text, _ := modCard(lang, c)
-		kb := &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{{{Text: "📋 " + i18n.T(lang, "copy"), CopyText: &telegram.CopyText{Text: c.Code}}}}}
-		if err := b.tg.EditText(ctx, m.Chat.ID, m.MessageID, text+"\n\n"+i18n.T(lang, verdict), kb); err != nil {
-			log.Printf("edit: %v", err)
-		}
-	}
+	b.closeCard(ctx, q.Message, lang, c, verdict)
 	if approve {
-		go b.broadcast(context.WithoutCancel(ctx), []store.Code{c})
+		// Admins already have the code in their card.
+		go b.broadcast(context.WithoutCancel(ctx), []store.Code{c}, true)
+	}
+}
+
+// closeCard appends the outcome to a moderation card and leaves only the
+// copy button: for admins the card is the code's message.
+func (b *Bot) closeCard(ctx context.Context, m *telegram.Message, lang string, c store.Code, outcome string) {
+	if m == nil {
+		return
+	}
+	text, _ := modCard(lang, c)
+	kb := &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{{{Text: "📋 " + i18n.T(lang, "copy"), CopyText: &telegram.CopyText{Text: c.Code}}}}}
+	if err := b.tg.EditText(ctx, m.Chat.ID, m.MessageID, text+"\n\n"+i18n.T(lang, outcome), kb); err != nil {
+		log.Printf("edit: %v", err)
 	}
 }
 
@@ -398,7 +414,7 @@ func (b *Bot) adminAdd(ctx context.Context, chat int64, lang string, args []stri
 		b.dbFail(ctx, chat, lang, err)
 	case isNew:
 		b.reply(ctx, chat, i18n.T(lang, "added", html.EscapeString(c.Code)), nil)
-		go b.broadcast(context.WithoutCancel(ctx), []store.Code{c})
+		go b.broadcast(context.WithoutCancel(ctx), []store.Code{c}, false)
 	default:
 		b.reply(ctx, chat, i18n.T(lang, "updated", html.EscapeString(c.Code)), nil)
 	}
@@ -521,13 +537,18 @@ func (b *Bot) tellAdmins(ctx context.Context, text func(lang string) string) {
 }
 
 // broadcast sends each new code as its own message to every user, once.
-func (b *Bot) broadcast(ctx context.Context, codes []store.Code) {
+// broadcast sends codes to every user; skipAdmins leaves out admins who
+// already got them as moderation cards.
+func (b *Bot) broadcast(ctx context.Context, codes []store.Code, skipAdmins bool) {
 	users, err := b.st.Users()
 	if err != nil {
 		log.Printf("db: %v", err)
 		return
 	}
 	for id, lang := range users {
+		if skipAdmins && b.admins[id] {
+			continue
+		}
 		err := b.sendCodes(ctx, id, lang, "🆕", codes)
 		switch {
 		case telegram.IsBlocked(err):

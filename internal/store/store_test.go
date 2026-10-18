@@ -50,8 +50,11 @@ func TestStore(t *testing.T) {
 	if !done || c.Status != StatusPublished || c.RewardRU != "ОК" {
 		t.Fatalf("approve: %v %+v", done, c)
 	}
-	if _, done, _ := st.Moderate("AAAA1", StatusRemoved); done {
-		t.Fatal("moderated twice")
+	if c, done, _ := st.Moderate("AAAA1", StatusRemoved); done || c.Status != StatusPublished {
+		t.Fatalf("moderated twice: %v %+v", done, c)
+	}
+	if c, done, err := st.Moderate("NONE0", StatusRemoved); err != nil || done || c.Code != "" {
+		t.Fatalf("missing code: %v %v %+v", err, done, c)
 	}
 	if a, _, p := count(); a != 1 || p != 0 {
 		t.Fatalf("after approve: active=%d pending=%d", a, p)

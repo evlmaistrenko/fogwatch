@@ -197,15 +197,16 @@ func (s *Store) Upsert(c Code) (changed bool, err error) {
 }
 
 // Moderate moves a pending code to published or removed. ok=false if the
-// code is no longer pending (e.g. another admin was faster).
+// code is no longer pending (e.g. another admin was faster); c is then its
+// current state, zero if the code doesn't exist.
 func (s *Store) Moderate(code, to string) (c Code, ok bool, err error) {
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&Code{}).Where("code = ? AND status = ?", code, StatusPending).Update("status", to)
-		if res.Error != nil || res.RowsAffected == 0 {
+		if res.Error != nil {
 			return res.Error
 		}
-		ok = true
-		return tx.Take(&c, "code = ?", code).Error
+		ok = res.RowsAffected > 0
+		return tx.Limit(1).Find(&c, "code = ?", code).Error
 	})
 	return c, ok, err
 }
