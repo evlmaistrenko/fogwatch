@@ -12,6 +12,11 @@ import (
 	_ "time/tzdata"
 
 	"github.com/robfig/cron/v3" // zone database for scratch/distroless images
+
+	"fogwatch/internal/ai"
+	"fogwatch/internal/bot"
+	"fogwatch/internal/store"
+	"fogwatch/internal/telegram"
 )
 
 // version is set at build time: -ldflags "-X main.version=1.2.3".
@@ -49,41 +54,23 @@ func main() {
 	}
 
 	// Relative to the working dir: ./data locally, /data (the volume) in Docker.
-	st, err := OpenStore("data/db.sqlite")
+	st, err := store.Open("data/db.sqlite")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer st.Close()
-	b := &Bot{
-		tg: NewTG(must("TELEGRAM_TOKEN")),
-		st: st,
-		ai: NewAI(
+	b := bot.New(
+		telegram.New(must("TELEGRAM_TOKEN")),
+		st,
+		ai.New(
 			env("OPENAI_BASE_URL", "https://api.openai.com/v1"),
 			must("OPENAI_API_KEY"),
 			env("OPENAI_MODEL", "gpt-5-mini"),
 		),
-		admins: admins,
-		loc:    loc,
-	}
-
-	// Command menus: default for everyone, extended for admins. "en" is the
-	// fallback for all other client languages. An admin's chat menu fails with
-	// "chat not found" until they've pressed /start once; restart after that.
-	for lang, cmds := range commands {
-		code := lang
-		if lang == "en" {
-			code = ""
-		}
-		if err := b.tg.SetCommands(ctx, cmds, code, 0); err != nil {
-			log.Printf("setMyCommands %s: %v", lang, err)
-		}
-		for id := range admins {
-			all := append(append([]Cmd{}, cmds...), adminCommands[lang]...)
-			if err := b.tg.SetCommands(ctx, all, code, id); err != nil {
-				log.Printf("setMyCommands admin %d %s: %v", id, lang, err)
-			}
-		}
-	}
+		admins,
+		loc,
+	)
+	b.SetupMenus(ctx)
 
 	// Search every 3 hours. SkipIfStillRunning: a slow search never overlaps.
 	c := cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger)))
@@ -94,19 +81,5 @@ func main() {
 	defer func() { <-c.Stop().Done() }() // wait for a running job before closing the DB
 
 	log.Printf("fogwatch %s running; admins=%d", version, len(admins))
-	offset := 0
-	for ctx.Err() == nil {
-		ups, err := b.tg.Updates(ctx, offset)
-		if err != nil {
-			if ctx.Err() == nil {
-				log.Printf("getUpdates: %v", err)
-				time.Sleep(3 * time.Second)
-			}
-			continue
-		}
-		for _, u := range ups {
-			offset = u.UpdateID + 1
-			b.Handle(ctx, u)
-		}
-	}
+	b.Run(ctx)
 }

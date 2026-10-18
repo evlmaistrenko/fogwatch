@@ -1,6 +1,10 @@
-package main
+package i18n
 
-import "fmt"
+import (
+	"fmt"
+
+	"fogwatch/internal/telegram"
+)
 
 var texts = map[string]map[string]string{
 	"ru": {
@@ -95,9 +99,9 @@ func T(lang, key string, args ...any) string {
 	return s
 }
 
-// detectLang maps a Telegram language_code to a supported language;
+// Detect maps a Telegram language_code to a supported language;
 // "" when Telegram didn't send one (keep what we have).
-func detectLang(code string) string {
+func Detect(code string) string {
 	switch {
 	case code == "":
 		return ""
@@ -107,13 +111,33 @@ func detectLang(code string) string {
 	return "en"
 }
 
-var commands = map[string][]Cmd{
-	"ru": {{"codes", "Активные коды"}, {"lang", "Язык"}, {"help", "Помощь"}},
-	"en": {{"codes", "Active codes"}, {"lang", "Language"}, {"help", "Help"}},
+var Commands = map[string][]telegram.Cmd{
+	"ru": {
+		{Command: "codes", Description: "Активные коды"},
+		{Command: "lang", Description: "Язык"},
+		{Command: "help", Description: "Помощь"},
+	},
+	"en": {
+		{Command: "codes", Description: "Active codes"},
+		{Command: "lang", Description: "Language"},
+		{Command: "help", Description: "Help"},
+	},
 }
 
-// adminCommands are appended to the menu shown in admins' chats.
-var adminCommands = map[string][]Cmd{
-	"ru": {{"pending", "На модерации"}, {"all", "Все коды"}, {"add", "Добавить код"}, {"del", "Удалить код"}, {"fetch", "Искать сейчас"}},
-	"en": {{"pending", "Awaiting moderation"}, {"all", "All codes"}, {"add", "Add code"}, {"del", "Remove code"}, {"fetch", "Search now"}},
+// AdminCommands are appended to the menu shown in admins' chats.
+var AdminCommands = map[string][]telegram.Cmd{
+	"ru": {
+		{Command: "pending", Description: "На модерации"},
+		{Command: "all", Description: "Все коды"},
+		{Command: "add", Description: "Добавить код"},
+		{Command: "del", Description: "Удалить код"},
+		{Command: "fetch", Description: "Искать сейчас"},
+	},
+	"en": {
+		{Command: "pending", Description: "Awaiting moderation"},
+		{Command: "all", Description: "All codes"},
+		{Command: "add", Description: "Add code"},
+		{Command: "del", Description: "Remove code"},
+		{Command: "fetch", Description: "Search now"},
+	},
 }
