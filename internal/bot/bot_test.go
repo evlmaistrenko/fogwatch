@@ -61,7 +61,7 @@ func TestScheduledFetchAlerts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := New(telegram.NewAt(tg.URL+"/"), st, ai.New(llm.URL, "k", "m"), map[int64]bool{42: true}, time.UTC)
+	b := New(telegram.NewAt(tg.URL+"/"), st, ai.New(llm.URL, "k", "m"), map[int64]bool{42: true}, time.UTC, "test")
 	ctx := context.Background()
 
 	b.ScheduledFetch(ctx) // failure 1: below threshold
@@ -104,7 +104,7 @@ func TestModerationSkipsAdmins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := New(telegram.NewAt(tg.URL+"/"), st, nil, map[int64]bool{42: true}, time.UTC)
+	b := New(telegram.NewAt(tg.URL+"/"), st, nil, map[int64]bool{42: true}, time.UTC, "test")
 	ctx := context.Background()
 	st.Touch(42, "en")
 	st.Touch(7, "en")
@@ -128,5 +128,14 @@ func TestModerationSkipsAdmins(t *testing.T) {
 	b.onModerate(ctx, q, false, "AAAA1")
 	if len(calls) != 2 || calls[1].method != "editMessageText" || !strings.HasSuffix(calls[1].text, "✅ Published") {
 		t.Fatalf("stale card: %+v", calls)
+	}
+}
+
+func TestHelpShowsVersion(t *testing.T) {
+	b := New(nil, nil, nil, nil, time.UTC, "1.2.3<x>")
+	for _, admin := range []bool{false, true} {
+		if h := b.help("en", admin); !strings.HasSuffix(h, "<i>Version 1.2.3&lt;x&gt;</i>") {
+			t.Fatalf("admin=%v: %q", admin, h)
+		}
 	}
 }

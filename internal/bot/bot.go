@@ -29,6 +29,7 @@ type Bot struct {
 	ai      *ai.Client
 	admins  map[int64]bool
 	loc     *time.Location
+	version string
 	fetchMu sync.Mutex
 
 	// Scheduled-search health; touched only by ScheduledFetch, which the
@@ -42,8 +43,8 @@ const (
 	fetchAlertAfter    = 2   // consecutive scheduled failures before admins hear about it
 )
 
-func New(tg *telegram.Client, st *store.Store, llm *ai.Client, admins map[int64]bool, loc *time.Location) *Bot {
-	return &Bot{tg: tg, st: st, ai: llm, admins: admins, loc: loc}
+func New(tg *telegram.Client, st *store.Store, llm *ai.Client, admins map[int64]bool, loc *time.Location, version string) *Bot {
+	return &Bot{tg: tg, st: st, ai: llm, admins: admins, loc: loc, version: version}
 }
 
 // SetupMenus sets the command menus: default for everyone, extended for
@@ -215,7 +216,7 @@ func (b *Bot) help(lang string, isAdmin bool) string {
 	if isAdmin {
 		t += i18n.T(lang, "admin_help")
 	}
-	return t
+	return t + i18n.T(lang, "version", html.EscapeString(b.version))
 }
 
 func (b *Bot) cmdCodes(ctx context.Context, chat int64, lang string) {
