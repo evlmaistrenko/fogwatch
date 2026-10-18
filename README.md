@@ -1,60 +1,57 @@
+<p align="center">
+  <img src="assets/avatar.svg" alt="Fogwatch" width="160">
+</p>
+
 # Fogwatch
 
 Telegram bot that collects Dead by Daylight promo codes via LLM web search
-(OpenAI or OpenRouter),
-lets an admin approve them, and sends each approved code once to everyone
-who pressed /start.
-Storage: SQLite via GORM (ncruces/go-sqlite3, pure Go, no cgo).
+(OpenAI or OpenRouter), lets an admin approve them, and sends each approved
+code once to everyone who pressed /start.
 
 Try it: [@fogwatch_bot](https://t.me/fogwatch_bot).
 
 ## Run
 
-    go mod tidy            # once: generates go.sum
-    cp .env.example .env   # fill in tokens and ADMIN_IDS
-    docker build -t fogwatch .
-    docker run -d --name fogwatch --env-file .env -v dbd-data:/data --restart unless-stopped fogwatch
+Needs a bot token from [@BotFather](https://t.me/BotFather) and an OpenAI or
+OpenRouter API key. Put the variables from [Configuration](#configuration)
+into `.env` (template: [.env.example](.env.example)) next to `compose.yaml`:
 
-## CI / releases
+```yaml
+services:
+  fogwatch:
+    image: ghcr.io/evlmaistrenko/fogwatch:latest
+    env_file: .env
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+```
 
-- PR: gofmt, vet, tests, Docker build (no push) — `.github/workflows/ci.yml`;
-  PR title must be a Conventional Commit (squash-merge message) — `pr-title.yml`;
-  Gemini posts an AI review (comments only, non-blocking) — `gemini-review.yml`.
-- Push to main — `.github/workflows/release.yml`:
-  - release-please keeps a release PR up to date from Conventional Commits
-    (types and version bumps: CONTRIBUTING.md → Commit messages);
-  - every push publishes `main` and `sha-xxxxxxx` images;
-  - merging the release PR tags `vX.Y.Z`, creates a GitHub release and
-    publishes `X.Y.Z`, `X.Y`, `X` (from 1.0) and `latest`.
-- Images (linux/amd64, linux/arm64): `ghcr.io/<owner>/<repo>` and
-  `docker.io/<DOCKERHUB_USERNAME>/<repo>`. Version is baked into the binary
-  and logged at start.
+The container runs as uid 65532 (distroless `nonroot`), so create `data/`
+with that owner first, or Docker creates it as root and the bot can't write:
 
-Repo setup: variable `DOCKERHUB_USERNAME`, secret `DOCKERHUB_TOKEN`
-(Docker Hub access token, read/write); secret `GEMINI_API_KEY` (AI Studio),
-optional variable `GEMINI_MODEL`; Settings → Actions → General →
-"Allow GitHub Actions to create and approve pull requests". `go.sum` must be
-committed.
+    mkdir -p data && sudo chown 65532:65532 data
+    docker compose up -d                            # start
+    docker compose pull && docker compose up -d     # update
 
-## Dev
+The image is also on Docker Hub as `evlmaistrenko/fogwatch` (linux/amd64,
+linux/arm64). `latest` is the last release; pin `X.Y` or `X.Y.Z` to control
+updates; `main` follows every push to `main`. The version is logged at start.
 
-Needs Go and [Task](https://taskfile.dev) (`brew install go-task`,
-`winget install Task.Task`, `scoop install task` or
-`go install github.com/go-task/task/v3/cmd/task@latest`). Works the same on
-Linux, macOS and Windows.
+Press /start in the bot as an admin once, then restart it: the admin command
+menu needs an existing chat.
 
-    task hooks   # once per clone: lefthook git hooks (gofmt, vet, commit message)
-    task dev     # hot reload via air (pinned, fetched on first run)
-    task build   # static binary -> bin/
-    task start   # build + run
-    task test
-    task         # list all tasks
+## Configuration
 
-`.env` is loaded automatically.
+Environment variables (see [.env.example](.env.example)):
 
-No search on start, so reloads don't cost OpenAI calls; use /fetch to test.
-Use a separate dev bot token: two processes
-long-polling one token get 409 Conflict.
+| Variable | Default | |
+|----------|---------|---|
+| `TELEGRAM_TOKEN` | — | bot token, required |
+| `ADMIN_IDS` | — | admin Telegram user ids, comma-separated ([@userinfobot](https://t.me/userinfobot)) |
+| `OPENAI_API_KEY` | — | required |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | any Responses API, e.g. `https://openrouter.ai/api/v1` |
+| `OPENAI_MODEL` | `gpt-5-mini` | `openai/gpt-5-mini` on OpenRouter |
+| `TZ` | `UTC` | "today" for code expiry, search schedule, log timestamps |
 
 ## Commands
 
@@ -62,7 +59,7 @@ long-polling one token get 409 Conflict.
     /codes    active codes, one message each
     /lang     ru / en / same as Telegram (default)
 
-Admin (ADMIN_IDS — Telegram user ids from env; shown in the admin's menu):
+Admin (shown in the admin's menu):
 
     /pending                          resend moderation cards
     /all                              everything in the database (⏳ pending, ⌛ expired)
@@ -72,21 +69,21 @@ Admin (ADMIN_IDS — Telegram user ids from env; shown in the admin's menu):
 
 ## Behaviour
 
-- Search runs every 3 hours (00:00, 03:00, … UTC), never on start. The
+- Search runs every 3 hours (00:00, 03:00, … in `TZ`), never on start. The
   prompt lists the 200 most recent known codes (any status) so the model looks
   for new ones only.
 - If 2 scheduled searches in a row fail, admins get one alert (the error
-  itself only goes to the log), and one "works again" message after the next success.
+  itself only goes to the log), and one "works again" message after the next
+  success.
 - Moderation: a new code from search is stored as pending and sent only to
   admins with ✅ Publish / ❌ Reject. Publish broadcasts it; reject keeps a
   tombstone so search won't bring it back. With several admins the first
   click wins. Admins must have pressed /start to receive cards.
-- A published code is sent once to every user, as its own message with a 📋 copy
-  button. No per-user state: redeemed = delete the message in Telegram.
+- A published code is sent once to every user, as its own message with a 📋
+  copy button. No per-user state: redeemed = delete the message in Telegram.
   Users who blocked the bot are removed on the next send.
 - Flood control (429) is retried with Telegram's retry_after.
-- TZ (default UTC) only defines "today" for code expiry and log timestamps.
-- LLM: Responses API at OPENAI_BASE_URL. Web search uses OpenAI's
+- LLM: Responses API at `OPENAI_BASE_URL`. Web search uses OpenAI's
   `web_search` tool, or `openrouter:web_search` when the URL is OpenRouter
   (any model; Exa fallback for models without native search, billed extra).
 - AI results are filtered: code must match `[A-Z0-9-]{4,30}`, have a source
@@ -95,13 +92,17 @@ Admin (ADMIN_IDS — Telegram user ids from env; shown in the admin's menu):
 
 ## Storage
 
-SQLite file `data/db.sqlite` relative to the working dir (`/data` volume in
-Docker), WAL mode, schema via GORM AutoMigrate:
+SQLite (pure Go driver, no cgo) at `data/db.sqlite` relative to the working
+dir, `/data` volume in Docker. WAL mode, schema via GORM AutoMigrate:
 
     codes       code PK, reward_en, reward_ru, expires, source, url,
                 status (pending|published|removed), created_at
     users       id PK (Telegram id), client_lang (follows Telegram),
                 lang (explicit /lang choice, '' = follow client), created_at
 
+Back up `data/` to keep users and codes.
 
-Contributing and project rules: [CONTRIBUTING.md](CONTRIBUTING.md).
+## Development
+
+Setup, commands, project rules, CI and releases:
+[CONTRIBUTING.md](CONTRIBUTING.md).
