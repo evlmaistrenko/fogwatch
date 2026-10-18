@@ -12,6 +12,7 @@ var texts = map[string]map[string]string{
 			"Каждый код — отдельное сообщение: 📋 копирует, а активированный код просто удалите из чата.\n\n" +
 			"/codes — активные коды\n/lang — язык",
 		"admin_help": "\n\n<b>Админ</b>\nНайденные поиском коды сначала приходят только вам: ✅ публикует и рассылает, ❌ отклоняет.\n/pending — коды на модерации\n/all — все коды в базе (⏳ модерация, ⌛ истёк)\n/add КОД [ГГГГ-ММ-ДД] [награда] — добавить и сразу разослать (или просто пришлите код)\n/del КОД — удалить\n/fetch — искать сейчас",
+		"version":    "\n\n<i>Версия %s</i>",
 		"all":        "📚 <b>Все коды</b>",
 		"no_codes":   "Активных кодов сейчас нет. Пришлю, как появятся.",
 		"until":      "до %s",
@@ -53,6 +54,7 @@ var texts = map[string]map[string]string{
 			"Each code is a separate message: 📋 copies it; once redeemed, just delete the message.\n\n" +
 			"/codes — active codes\n/lang — language",
 		"admin_help": "\n\n<b>Admin</b>\nCodes found by search come to you first: ✅ publishes and broadcasts, ❌ rejects.\n/pending — codes awaiting moderation\n/all — all codes in the database (⏳ pending, ⌛ expired)\n/add CODE [YYYY-MM-DD] [reward] — add and broadcast now (or just send the code)\n/del CODE — remove\n/fetch — search now",
+		"version":    "\n\n<i>Version %s</i>",
 		"all":        "📚 <b>All codes</b>",
 		"no_codes":   "No active codes right now. I'll send them when they appear.",
 		"until":      "until %s",

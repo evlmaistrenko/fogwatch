@@ -69,6 +69,7 @@ func main() {
 		),
 		admins,
 		loc,
+		version,
 	)
 	b.SetupMenus(ctx)
 
