@@ -274,7 +274,7 @@ func TestListPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := New(nil, st, nil, nil, time.UTC, "test")
-	if text, kb, err := b.listPage("en", 0); err != nil || kb != nil || !strings.Contains(text, "No active codes") {
+	if text, kb, err := b.listPage("en", 0, false); err != nil || kb != nil || !strings.Contains(text, "No active codes") {
 		t.Fatalf("empty: %q %+v %v", text, kb, err)
 	}
 	start := time.Now().Add(-time.Hour)
@@ -282,7 +282,7 @@ func TestListPages(t *testing.T) {
 		st.Upsert(store.Code{Code: fmt.Sprintf("CODE%02d", i), Source: "admin", CreatedAt: start.Add(time.Duration(i) * time.Minute)})
 	}
 
-	text, kb, _ := b.listPage("en", 0)
+	text, kb, _ := b.listPage("en", 0, false)
 	rows := kb.InlineKeyboard
 	if !strings.Contains(text, "CODE22") || strings.Contains(text, "CODE12") || len(rows) != 6 {
 		t.Fatalf("page 1: %q %+v", text, rows)
@@ -296,7 +296,7 @@ func TestListPages(t *testing.T) {
 
 	// Last page, also when asked for one past it (codes removed meanwhile).
 	for _, p := range []int{2, 9} {
-		text, kb, _ = b.listPage("en", p)
+		text, kb, _ = b.listPage("en", p, false)
 		rows = kb.InlineKeyboard
 		if !strings.Contains(text, "CODE00") || strings.Count(text, "🎁") != 3 || len(rows) != 3 {
 			t.Fatalf("page %d: %q %+v", p, text, rows)
@@ -304,5 +304,15 @@ func TestListPages(t *testing.T) {
 		if nav := rows[2]; len(nav) != 2 || nav[0].CallbackData != "p:1" || nav[1].Text != "3 / 3" {
 			t.Fatalf("nav %d: %+v", p, nav)
 		}
+	}
+	// Admins also see pending and expired codes; users don't.
+	st.Upsert(store.Code{Code: "PEND1", Source: "ai"})
+	st.Upsert(store.Code{Code: "GONE1", Source: "admin", Expires: "2000-01-01"})
+	if text, _, _ := b.listPage("en", 0, false); strings.Contains(text, "PEND1") || strings.Contains(text, "GONE1") {
+		t.Fatalf("user sees pending/expired: %q", text)
+	}
+	text, _, _ = b.listPage("en", 0, true)
+	if !strings.Contains(text, "⏳ <code>PEND1</code>") || !strings.Contains(text, "⌛ <code>GONE1</code>") {
+		t.Fatalf("admin: %q", text)
 	}
 }

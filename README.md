@@ -59,13 +59,13 @@ Environment variables (see [.env.example](.env.example)):
     /start    help + recent codes
     /codes    recent active codes, one message each (without an expiry
               date: added within FRESH_DAYS)
-    /list     all active codes, one message with pages and copy buttons
+    /list     all active codes, one message with pages and copy buttons;
+              admins see everything in the database (⏳ pending, ⌛ expired)
     /lang     ru / en / same as Telegram (default)
 
 Admin (shown in the admin's menu):
 
     /pending                          resend moderation cards
-    /all                              everything in the database (⏳ pending, ⌛ expired)
     /add CODE [YYYY-MM-DD] [reward]   publish + broadcast now;
                                       "ru text | en text" sets both languages
     /del CODE                         tombstone: search won't re-add it

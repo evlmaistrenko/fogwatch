@@ -24,10 +24,7 @@ var (
 	dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 )
 
-const (
-	allChunk = 40 // lines per /all message (text limit 4096)
-	listPage = 10 // codes per /list page; copy buttons go two per row
-)
+const listPage = 10 // codes per /list page; copy buttons go two per row
 
 type Bot struct {
 	tg      *telegram.Client
@@ -223,7 +220,7 @@ func (b *Bot) onMessage(ctx context.Context, m *telegram.Message) {
 	case "/codes":
 		b.cmdCodes(ctx, chat, lang)
 	case "/list":
-		text, kb, err := b.listPage(lang, 0)
+		text, kb, err := b.listPage(lang, 0, isAdmin)
 		if err != nil {
 			b.dbFail(ctx, chat, lang, err)
 			return
@@ -234,14 +231,12 @@ func (b *Bot) onMessage(ctx context.Context, m *telegram.Message) {
 			{{Text: "Русский", CallbackData: "l:ru"}, {Text: "English", CallbackData: "l:en"}},
 			{{Text: i18n.T(lang, "lang_auto_btn"), CallbackData: "l:auto"}},
 		}})
-	case "/add", "/del", "/fetch", "/all", "/pending":
+	case "/add", "/del", "/fetch", "/pending":
 		if !isAdmin {
 			b.reply(ctx, chat, i18n.T(lang, "no_access"), nil)
 			return
 		}
 		switch cmd {
-		case "/all":
-			b.cmdAll(ctx, chat, lang)
 		case "/pending":
 			b.cmdPending(ctx, chat, lang)
 		case "/add":
@@ -310,24 +305,43 @@ func (b *Bot) splitStale(codes []store.Code) (fresh []store.Code, stale int) {
 
 func (b *Bot) freshDays() int { return max(1, int(b.FreshFor.Round(24*time.Hour)/(24*time.Hour))) }
 
-// listPage renders page (0-based, clamped) of all active codes, newest
-// first: one message edited in place by the ◀️/▶️ buttons ("p:<page>"),
-// with a copy button per code.
-func (b *Bot) listPage(lang string, page int) (string, *telegram.Keyboard, error) {
-	codes, err := b.st.Active(b.today())
+// listPage renders page (0-based, clamped) of the codes, newest first: one
+// message edited in place by the ◀️/▶️ buttons ("p:<page>"), with a copy
+// button per code. Users get the active codes; admins everything in the
+// database, pending and expired included.
+func (b *Bot) listPage(lang string, page int, admin bool) (string, *telegram.Keyboard, error) {
+	today := b.today()
+	var codes []store.Code
+	var err error
+	if admin {
+		codes, err = b.st.All()
+	} else {
+		codes, err = b.st.Active(today)
+		slices.Reverse(codes)
+	}
 	if err != nil || len(codes) == 0 {
 		return i18n.T(lang, "no_codes"), nil, err
 	}
-	slices.Reverse(codes)
 	pages := (len(codes) + listPage - 1) / listPage
 	page = max(0, min(page, pages-1))
 	codes = codes[page*listPage : min((page+1)*listPage, len(codes))]
 
+	header := "list"
+	if admin {
+		header = "all"
+	}
 	var sb strings.Builder
-	sb.WriteString(i18n.T(lang, "list"))
+	sb.WriteString(i18n.T(lang, header))
 	kb := &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{}}
 	for i, c := range codes {
-		sb.WriteString("\n🎁 " + codeLine(lang, c))
+		icon := "🎁"
+		switch {
+		case c.Status == store.StatusPending:
+			icon = "⏳"
+		case !c.Active(today):
+			icon = "⌛"
+		}
+		sb.WriteString("\n" + icon + " " + codeLine(lang, c))
 		btn := telegram.Button{Text: "📋 " + c.Code, CopyText: &telegram.CopyText{Text: c.Code}}
 		if i%2 == 0 {
 			kb.InlineKeyboard = append(kb.InlineKeyboard, []telegram.Button{btn})
@@ -348,35 +362,6 @@ func (b *Bot) listPage(lang string, page int) (string, *telegram.Keyboard, error
 		kb.InlineKeyboard = append(kb.InlineKeyboard, nav)
 	}
 	return sb.String(), kb, nil
-}
-
-// cmdAll is a compact text list of everything in the database.
-func (b *Bot) cmdAll(ctx context.Context, chat int64, lang string) {
-	codes, err := b.st.All()
-	if err != nil {
-		b.dbFail(ctx, chat, lang, err)
-		return
-	}
-	if len(codes) == 0 {
-		b.reply(ctx, chat, i18n.T(lang, "no_codes"), nil)
-		return
-	}
-	today := b.today()
-	for i := 0; i < len(codes); i += allChunk {
-		var sb strings.Builder
-		sb.WriteString(i18n.T(lang, "all"))
-		for _, c := range codes[i:min(i+allChunk, len(codes))] {
-			icon := "🎁"
-			switch {
-			case c.Status == store.StatusPending:
-				icon = "⏳"
-			case !c.Active(today):
-				icon = "⌛"
-			}
-			sb.WriteString("\n" + icon + " " + codeLine(lang, c))
-		}
-		b.reply(ctx, chat, sb.String(), nil)
-	}
 }
 
 func (b *Bot) onCallback(ctx context.Context, q *telegram.CallbackQuery) {
@@ -417,7 +402,7 @@ func (b *Bot) onCallback(ctx context.Context, q *telegram.CallbackQuery) {
 		if err != nil || q.Message == nil {
 			return // "p:-" is the page counter
 		}
-		text, kb, err := b.listPage(b.st.Lang(q.From.ID), page)
+		text, kb, err := b.listPage(b.st.Lang(q.From.ID), page, b.admins[q.From.ID])
 		if err != nil {
 			log.Printf("db: %v", err)
 			return
