@@ -163,4 +163,8 @@ func TestAdminPlainCodeIsNotAdded(t *testing.T) {
 	if len(all) != 1 || all[0].Code != "AAAA1" || all[0].RewardEN != "Some reward" {
 		t.Fatalf("/add: %+v", all)
 	}
+	b.onMessage(context.Background(), msg("/add AAAA1 Чары крови | Bloodpoints"))
+	if all, _ = st.All(); all[0].RewardRU != "Чары крови" || all[0].RewardEN != "Bloodpoints" {
+		t.Fatalf("/add ru|en: %+v", all)
+	}
 }
