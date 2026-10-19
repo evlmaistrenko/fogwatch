@@ -50,10 +50,10 @@ func TestStore(t *testing.T) {
 	if !done || c.Status != StatusPublished || c.RewardRU != "ОК" {
 		t.Fatalf("approve: %v %+v", done, c)
 	}
-	if c, done, _ := st.Moderate("AAAA1", StatusRemoved); done || c.Status != StatusPublished {
+	if c, done, _ := st.Moderate("AAAA1", StatusRejected); done || c.Status != StatusPublished {
 		t.Fatalf("moderated twice: %v %+v", done, c)
 	}
-	if c, done, err := st.Moderate("NONE0", StatusRemoved); err != nil || done || c.Code != "" {
+	if c, done, err := st.Moderate("NONE0", StatusRejected); err != nil || done || c.Code != "" {
 		t.Fatalf("missing code: %v %v %+v", err, done, c)
 	}
 	if a, _, p := count(); a != 1 || p != 0 {
@@ -62,7 +62,7 @@ func TestStore(t *testing.T) {
 
 	// Reject -> tombstone: search can't bring it back, admin can.
 	st.Upsert(Code{Code: "BBBB2", Source: "ai"})
-	if _, done, _ := st.Moderate("BBBB2", StatusRemoved); !done {
+	if _, done, _ := st.Moderate("BBBB2", StatusRejected); !done {
 		t.Fatal("reject failed")
 	}
 	if changed, _ := st.Upsert(Code{Code: "BBBB2", Source: "ai"}); changed {
@@ -88,6 +88,12 @@ func TestStore(t *testing.T) {
 	ok(err)
 	if !removed {
 		t.Fatal("remove failed")
+	}
+	if changed, _ := st.Upsert(Code{Code: "AAAA1", Source: "ai"}); changed {
+		t.Fatal("ai resurrected removed code")
+	}
+	if all, _ := st.All(); len(all) != 3 {
+		t.Fatalf("all with tombstones: %+v", all)
 	}
 
 	// Users + persistence.

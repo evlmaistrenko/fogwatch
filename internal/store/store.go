@@ -21,17 +21,23 @@ type Code struct {
 	Expires   string `gorm:"not null;default:''"` // YYYY-MM-DD, '' = unknown
 	Source    string `gorm:"not null"`            // ai | admin
 	URL       string `gorm:"not null;default:''"`
-	Status    string `gorm:"not null;index"` // pending | published | removed
+	Status    string `gorm:"not null;index"` // pending | published | rejected | removed
 	CreatedAt time.Time
 }
 
 // Code lifecycle: search finds -> pending (admins only) -> published
-// (broadcast) or removed. Removed is a tombstone: search won't re-add it.
+// (broadcast) or rejected; /del makes any code removed. Rejected and removed
+// are tombstones: search won't re-add them. Codes rejected before the
+// rejected status existed are removed.
 const (
 	StatusPending   = "pending"
 	StatusPublished = "published"
+	StatusRejected  = "rejected"
 	StatusRemoved   = "removed"
 )
+
+// Gone reports a tombstone.
+func (c *Code) Gone() bool { return c.Status == StatusRejected || c.Status == StatusRemoved }
 
 // User is anyone who pressed /start; all of them get new codes.
 // Blocking the bot removes the row.
@@ -178,7 +184,7 @@ func (s *Store) Upsert(c Code) (changed bool, err error) {
 			c.Status, changed = want, true
 			return tx.Create(&c).Error
 		}
-		if c.Source != "admin" && old.Status == StatusRemoved {
+		if c.Source != "admin" && old.Gone() {
 			return nil
 		}
 		upd := map[string]any{}
@@ -203,7 +209,7 @@ func (s *Store) Upsert(c Code) (changed bool, err error) {
 	return changed, err
 }
 
-// Moderate moves a pending code to published or removed. ok=false if the
+// Moderate moves a pending code to published or rejected. ok=false if the
 // code is no longer pending (e.g. another admin was faster); c is then its
 // current state, zero if the code doesn't exist.
 func (s *Store) Moderate(code, to string) (c Code, ok bool, err error) {
@@ -247,9 +253,9 @@ func (s *Store) KnownCodes(limit int) ([]string, error) {
 	return cs, err
 }
 
-// All returns every non-removed code (pending included), newest first.
+// All returns every code, tombstones included, newest first.
 func (s *Store) All() ([]Code, error) {
 	var cs []Code
-	err := s.db.Where("status <> ?", StatusRemoved).Order("created_at DESC").Find(&cs).Error
+	err := s.db.Order("created_at DESC").Find(&cs).Error
 	return cs, err
 }

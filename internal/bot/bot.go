@@ -3,9 +3,12 @@ package bot
 import (
 	"context"
 	"errors"
+	"fmt"
 	"html"
 	"log"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +24,7 @@ var (
 	dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 )
 
-const allChunk = 40 // lines per /all message (text limit 4096)
+const listPage = 10 // codes per /codes page; copy buttons go two per row
 
 type Bot struct {
 	tg      *telegram.Client
@@ -41,6 +44,9 @@ type Bot struct {
 const (
 	knownCodesInPrompt = 200 // most recent codes listed to the LLM as already known
 	fetchAlertAfter    = 2   // consecutive scheduled failures before admins hear about it
+	// Codes without an expiry date added within freshDays are "fresh": sent
+	// on /start and listed first in /codes.
+	freshDays = 7
 )
 
 func New(tg *telegram.Client, st *store.Store, llm *ai.Client, admins map[int64]bool, loc *time.Location, version string) *Bot {
@@ -210,24 +216,27 @@ func (b *Bot) onMessage(ctx context.Context, m *telegram.Message) {
 			b.chatMenu(ctx, uid, b.st.ChosenLang(uid))
 		}
 		b.reply(ctx, chat, b.help(lang, isAdmin), nil)
-		b.cmdCodes(ctx, chat, lang)
+		b.sendFresh(ctx, chat, lang)
 	case "/help":
 		b.reply(ctx, chat, b.help(lang, isAdmin), nil)
 	case "/codes":
-		b.cmdCodes(ctx, chat, lang)
+		text, kb, err := b.listPage(lang, "a", 0, isAdmin)
+		if err != nil {
+			b.dbFail(ctx, chat, lang, err)
+			return
+		}
+		b.reply(ctx, chat, text, kb)
 	case "/lang":
 		b.reply(ctx, chat, i18n.T(lang, "pick_lang"), &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{
 			{{Text: "Русский", CallbackData: "l:ru"}, {Text: "English", CallbackData: "l:en"}},
 			{{Text: i18n.T(lang, "lang_auto_btn"), CallbackData: "l:auto"}},
 		}})
-	case "/add", "/del", "/fetch", "/all", "/pending":
+	case "/add", "/del", "/fetch", "/pending":
 		if !isAdmin {
 			b.reply(ctx, chat, i18n.T(lang, "no_access"), nil)
 			return
 		}
 		switch cmd {
-		case "/all":
-			b.cmdAll(ctx, chat, lang)
 		case "/pending":
 			b.cmdPending(ctx, chat, lang)
 		case "/add":
@@ -250,47 +259,200 @@ func (b *Bot) help(lang string, isAdmin bool) string {
 	return t + i18n.T(lang, "version", html.EscapeString(b.version))
 }
 
-func (b *Bot) cmdCodes(ctx context.Context, chat int64, lang string) {
+// sendFresh sends active codes one per message, leaving out the ones without
+// an expiry date added more than freshDays ago: those would otherwise pile up
+// on every /start. /codes lists them all.
+func (b *Bot) sendFresh(ctx context.Context, chat int64, lang string) {
 	codes, err := b.st.Active(b.today())
-	switch {
-	case err != nil:
-		b.dbFail(ctx, chat, lang, err)
-	case len(codes) == 0:
-		b.reply(ctx, chat, i18n.T(lang, "no_codes"), nil)
-	default:
-		if err := b.sendCodes(ctx, chat, lang, "🎁", codes); err != nil {
-			log.Printf("send codes %d: %v", chat, err)
-		}
-	}
-}
-
-// cmdAll is a compact text list of everything in the database.
-func (b *Bot) cmdAll(ctx context.Context, chat int64, lang string) {
-	codes, err := b.st.All()
 	if err != nil {
 		b.dbFail(ctx, chat, lang, err)
 		return
 	}
-	if len(codes) == 0 {
+	var fresh []store.Code
+	for _, c := range codes {
+		if b.fresh(c) {
+			fresh = append(fresh, c)
+		}
+	}
+	stale := len(codes) - len(fresh)
+	switch {
+	case len(codes) == 0:
 		b.reply(ctx, chat, i18n.T(lang, "no_codes"), nil)
 		return
+	case len(fresh) == 0:
+		b.reply(ctx, chat, i18n.T(lang, "no_fresh", freshDays, stale), nil)
+		return
+	}
+	if err := b.sendCodes(ctx, chat, lang, "🎁", fresh); err != nil {
+		log.Printf("send codes %d: %v", chat, err)
+		return
+	}
+	if stale > 0 {
+		b.reply(ctx, chat, i18n.T(lang, "more_codes", freshDays, stale), nil)
+	}
+}
+
+// fresh: has an expiry date or was added within freshDays.
+func (b *Bot) fresh(c store.Code) bool {
+	return c.Expires != "" || c.CreatedAt.After(time.Now().AddDate(0, 0, -freshDays))
+}
+
+// Groups of the /codes list, in order. Users see only the active ones.
+const (
+	grpFresh    = iota // with an expiry date (soonest first) or fresh
+	grpPending         // admins only, as are the rest but grpStale
+	grpRejected        //
+	grpStale           // active, no expiry date, not fresh
+	grpExpired         //
+	grpRemoved         //
+)
+
+var grpIcons = [...]string{"🎁", "⏳", "🚫", "🎁", "⌛", "🗑"}
+
+func (b *Bot) group(c store.Code, today string) int {
+	switch {
+	case c.Status == store.StatusPending:
+		return grpPending
+	case c.Status == store.StatusRejected:
+		return grpRejected
+	case c.Status == store.StatusRemoved:
+		return grpRemoved
+	case !c.Active(today):
+		return grpExpired
+	case !b.fresh(c):
+		return grpStale
+	}
+	return grpFresh
+}
+
+// listCodes is what /codes lists, in order: fresh codes (expiring soonest,
+// then the ones without a date, newest first), then for admins pending and
+// rejected ones, then older codes without a date, then for admins expired
+// and removed ones. Within a group newest first.
+func (b *Bot) listCodes(admin bool) ([]store.Code, error) {
+	today := b.today()
+	var codes []store.Code
+	var err error
+	if admin {
+		codes, err = b.st.All()
+	} else {
+		codes, err = b.st.Active(today)
+		slices.Reverse(codes)
+	}
+	if err != nil {
+		return nil, err
+	}
+	slices.SortStableFunc(codes, func(x, y store.Code) int {
+		gx, gy := b.group(x, today), b.group(y, today)
+		if gx != gy {
+			return gx - gy
+		}
+		if gx == grpFresh && x.Expires != y.Expires {
+			switch {
+			case x.Expires == "":
+				return 1
+			case y.Expires == "":
+				return -1
+			}
+			return strings.Compare(x.Expires, y.Expires)
+		}
+		return 0 // keep newest first
+	})
+	return codes, nil
+}
+
+// listFilters are the admin filter buttons of /codes: key, label, groups.
+// "a" (everything) is the default.
+var listFilters = []struct {
+	key, label string
+	groups     []int
+}{
+	{"a", "all_btn", nil},
+	{"g", "🎁", []int{grpFresh, grpStale}},
+	{"p", "⏳", []int{grpPending}},
+	{"r", "🚫", []int{grpRejected}},
+	{"e", "⌛", []int{grpExpired}},
+	{"d", "🗑", []int{grpRemoved}},
+}
+
+// listPage renders page (0-based, clamped) of listCodes: one message edited
+// in place by the buttons. callback_data is "p:<filter><page>"; "p:-" is the
+// page counter. Admins get a filter row; for users filter is ignored.
+func (b *Bot) listPage(lang, filter string, page int, admin bool) (string, *telegram.Keyboard, error) {
+	all, err := b.listCodes(admin)
+	if err != nil || len(all) == 0 {
+		return i18n.T(lang, "no_codes"), nil, err
 	}
 	today := b.today()
-	for i := 0; i < len(codes); i += allChunk {
-		var sb strings.Builder
-		sb.WriteString(i18n.T(lang, "all"))
-		for _, c := range codes[i:min(i+allChunk, len(codes))] {
-			icon := "🎁"
-			switch {
-			case c.Status == store.StatusPending:
-				icon = "⏳"
-			case !c.Active(today):
-				icon = "⌛"
+	kb := &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{}}
+	codes := all
+	if admin {
+		var row []telegram.Button
+		for _, f := range listFilters {
+			var in []store.Code
+			for _, c := range all {
+				if f.groups == nil || slices.Contains(f.groups, b.group(c, today)) {
+					in = append(in, c)
+				}
 			}
-			sb.WriteString("\n" + icon + " " + codeLine(lang, c))
+			if f.key == filter {
+				codes = in
+			} else if len(in) == 0 && f.groups != nil {
+				continue
+			}
+			label := f.label
+			if f.groups == nil {
+				label = i18n.T(lang, label)
+			}
+			label += " " + strconv.Itoa(len(in))
+			if f.key == filter {
+				label = "• " + label
+			}
+			row = append(row, telegram.Button{Text: label, CallbackData: "p:" + f.key + "0"})
 		}
-		b.reply(ctx, chat, sb.String(), nil)
+		kb.InlineKeyboard = append(kb.InlineKeyboard, row[:min(3, len(row))])
+		if len(row) > 3 {
+			kb.InlineKeyboard = append(kb.InlineKeyboard, row[3:])
+		}
+	} else {
+		filter = "a"
 	}
+
+	pages := max(1, (len(codes)+listPage-1)/listPage)
+	page = max(0, min(page, pages-1))
+	codes = codes[page*listPage : min((page+1)*listPage, len(codes))]
+
+	header := "list"
+	if admin {
+		header = "all"
+	}
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, header))
+	if len(codes) == 0 {
+		sb.WriteString("\n" + i18n.T(lang, "list_empty"))
+	}
+	for i, c := range codes {
+		sb.WriteString("\n" + grpIcons[b.group(c, today)] + " " + codeLine(lang, c))
+		btn := telegram.Button{Text: "📋 " + c.Code, CopyText: &telegram.CopyText{Text: c.Code}}
+		if i%2 == 0 {
+			kb.InlineKeyboard = append(kb.InlineKeyboard, []telegram.Button{btn})
+		} else {
+			last := len(kb.InlineKeyboard) - 1
+			kb.InlineKeyboard[last] = append(kb.InlineKeyboard[last], btn)
+		}
+	}
+	if pages > 1 {
+		nav := []telegram.Button{}
+		if page > 0 {
+			nav = append(nav, telegram.Button{Text: "◀️", CallbackData: "p:" + filter + strconv.Itoa(page-1)})
+		}
+		nav = append(nav, telegram.Button{Text: fmt.Sprintf("%d / %d", page+1, pages), CallbackData: "p:-"})
+		if page < pages-1 {
+			nav = append(nav, telegram.Button{Text: "▶️", CallbackData: "p:" + filter + strconv.Itoa(page+1)})
+		}
+		kb.InlineKeyboard = append(kb.InlineKeyboard, nav)
+	}
+	return sb.String(), kb, nil
 }
 
 func (b *Bot) onCallback(ctx context.Context, q *telegram.CallbackQuery) {
@@ -325,6 +487,23 @@ func (b *Bot) onCallback(ctx context.Context, q *telegram.CallbackQuery) {
 		}
 	case "ok", "no":
 		b.onModerate(ctx, q, kind == "ok", val)
+	case "p":
+		_ = b.tg.Answer(ctx, q.ID, "")
+		if len(val) < 2 || q.Message == nil {
+			return // "p:-" is the page counter
+		}
+		page, err := strconv.Atoi(val[1:])
+		if err != nil {
+			return
+		}
+		text, kb, err := b.listPage(b.st.Lang(q.From.ID), val[:1], page, b.admins[q.From.ID])
+		if err != nil {
+			log.Printf("db: %v", err)
+			return
+		}
+		if err := b.tg.EditText(ctx, q.Message.Chat.ID, q.Message.MessageID, text, kb); err != nil {
+			log.Printf("edit: %v", err)
+		}
 	default:
 		_ = b.tg.Answer(ctx, q.ID, "")
 	}
@@ -382,7 +561,7 @@ func (b *Bot) onModerate(ctx context.Context, q *telegram.CallbackQuery, approve
 		_ = b.tg.Answer(ctx, q.ID, i18n.T(lang, "no_access"))
 		return
 	}
-	to, verdict := store.StatusRemoved, "rejected"
+	to, verdict := store.StatusRejected, "rejected"
 	if approve {
 		to, verdict = store.StatusPublished, "approved"
 	}

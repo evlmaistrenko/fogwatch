@@ -83,9 +83,11 @@ menus). Tests sit next to the code as `*_test.go`.
 - Messages use `parse_mode: HTML`: escape every dynamic value with
   `html.EscapeString`.
 - `callback_data` ≤ 64 bytes. Prefixes in use: `l:` (language), `ok:`/`no:`
-  (moderation). Admin-only callbacks re-check `b.admins`.
-- One code per message with a `copy_text` button; users delete the message to
-  mark a code as used. No per-user code state — keep it that way.
+  (moderation), `p:` (`/codes` pages). Admin-only callbacks re-check `b.admins`.
+- Broadcasts and `/start` send one code per message with a `copy_text`
+  button; users track codes with Telegram itself (delete redeemed ones, react,
+  pin, …). No per-user code state — keep it that way. `/codes` is the one
+  paged overview: a single message edited in place, a copy button per code.
 - Never log the bot token (`internal/telegram` strips URLs from
   errors).
 
@@ -98,7 +100,8 @@ menus). Tests sit next to the code as `*_test.go`.
 - Scheduled search failures alert admins once (after 2 in a row) and once on
   recovery — never on every failed run.
 - Search results stay `pending` until an admin approves; admin-added codes are
-  published at once; `removed` is a tombstone that search can't undo.
+  published at once; `rejected` and `removed` are tombstones that search
+  can't undo.
 - LLM output is validated (code format, source URL, expiry), never trusted.
 
 ### Tests
@@ -139,7 +142,7 @@ menus). Tests sit next to the code as `*_test.go`.
 
 | Type | Use for | Release |
 |------|---------|---------|
-| `feat` | new user- or admin-visible functionality | minor (patch while 0.x) |
+| `feat` | new user- or admin-visible functionality | minor |
 | `fix` | bug fix | patch |
 | `perf` | performance improvement | patch |
 | `revert` | reverting an earlier commit | patch |
@@ -150,7 +153,7 @@ menus). Tests sit next to the code as `*_test.go`.
 | `build` | build, Dockerfile, Go/module versions | — |
 | `ci` | GitHub Actions, hooks | — |
 | `chore` | everything else (deps, tooling, housekeeping) | — |
-| any type + `!` | breaking change | major (minor while 0.x) |
+| any type + `!` | breaking change | major |
 
 "—" means: no release on its own and not shown in the changelog; it ships with
 the next release triggered by another commit. Also accepted locally (never

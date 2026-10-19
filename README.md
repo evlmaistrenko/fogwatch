@@ -55,14 +55,17 @@ Environment variables (see [.env.example](.env.example)):
 
 ## Commands
 
-    /start    help + all active codes
-    /codes    active codes, one message each
+    /start    help + recent codes, one message each (without an expiry
+              date: added within the last 7 days)
+    /codes    all active codes, one message with pages and copy buttons:
+              expiring soonest, then recent, then older without a date;
+              admins see the whole database with status filter buttons
+              (🎁 active, ⏳ pending, 🚫 rejected, ⌛ expired, 🗑 removed)
     /lang     ru / en / same as Telegram (default)
 
 Admin (shown in the admin's menu):
 
     /pending                          resend moderation cards
-    /all                              everything in the database (⏳ pending, ⌛ expired)
     /add CODE [YYYY-MM-DD] [reward]   publish + broadcast now;
                                       "ru text | en text" sets both languages
     /del CODE                         tombstone: search won't re-add it
@@ -90,7 +93,8 @@ Admin (shown in the admin's menu):
   (any model; Exa fallback for models without native search, billed extra).
 - AI results are filtered: code must match `[A-Z0-9-]{4,30}`, have a source
   URL, and not be past its expiry. Codes without a known expiry stay active
-  until an admin removes them.
+  until an admin removes them, but `/start` only sends the ones added within
+  the last 7 days; `/codes` lists them all.
 
 ## Storage
 
