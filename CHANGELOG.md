@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/evlmaistrenko/fogwatch/compare/v1.1.0...v1.1.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* exit when telegram stays unreachable so docker restarts the bot ([#24](https://github.com/evlmaistrenko/fogwatch/issues/24)) ([7006a5f](https://github.com/evlmaistrenko/fogwatch/commit/7006a5fadb06e286e768b6dbf8c54a03227cc807))
+
 ## [1.1.0](https://github.com/evlmaistrenko/fogwatch/compare/v1.0.0...v1.1.0) (2026-10-19)
 
 
