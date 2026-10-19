@@ -69,6 +69,12 @@ func (c *Code) Reward(lang string) string {
 	return c.RewardEN
 }
 
+// Setting is a key-value pair for bot-wide state.
+type Setting struct {
+	Key   string `gorm:"primaryKey"`
+	Value string `gorm:"not null;default:''"`
+}
+
 type Store struct{ db *gorm.DB }
 
 func Open(path string) (*Store, error) {
@@ -87,7 +93,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	sqlDB.SetMaxOpenConns(1) // one writer is all SQLite wants; load is trivial
-	if err := db.AutoMigrate(&Code{}, &User{}); err != nil {
+	if err := db.AutoMigrate(&Code{}, &User{}, &Setting{}); err != nil {
 		return nil, err
 	}
 	return &Store{db: db}, nil
@@ -148,6 +154,30 @@ func (s *Store) ChosenLang(id int64) string {
 	var u User
 	s.db.Limit(1).Find(&u, id)
 	return u.Lang
+}
+
+// ChosenLangs returns id -> language for users who picked one in /lang.
+func (s *Store) ChosenLangs() (map[int64]string, error) {
+	var us []User
+	if err := s.db.Where("lang <> ''").Find(&us).Error; err != nil {
+		return nil, err
+	}
+	m := make(map[int64]string, len(us))
+	for _, u := range us {
+		m[u.ID] = u.Lang
+	}
+	return m, nil
+}
+
+// Setting returns a stored setting, "" if unset.
+func (s *Store) Setting(key string) string {
+	var st Setting
+	s.db.Limit(1).Find(&st, "key = ?", key)
+	return st.Value
+}
+
+func (s *Store) SetSetting(key, value string) error {
+	return s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&Setting{Key: key, Value: value}).Error
 }
 
 // Users returns id -> language for everyone to broadcast to.

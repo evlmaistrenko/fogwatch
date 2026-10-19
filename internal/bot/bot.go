@@ -2,6 +2,9 @@ package bot
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -113,7 +116,45 @@ func (b *Bot) setupMenus(ctx context.Context) bool {
 			return false
 		}
 	}
+	return b.refreshUserMenus(ctx)
+}
+
+// refreshUserMenus re-sets the chat menus of users who picked a language in
+// /lang: Telegram keeps each one as it was set, so they'd miss command
+// changes. It only runs when the commands changed since the last refresh,
+// and reports false on a network error, to be retried.
+func (b *Bot) refreshUserMenus(ctx context.Context) bool {
+	sum := menuSum()
+	if b.st.Setting(menuSumKey) == sum {
+		return true
+	}
+	users, err := b.st.ChosenLangs()
+	if err != nil {
+		log.Printf("db: %v", err)
+		return true // not a network problem: retrying won't help
+	}
+	for id, lang := range users {
+		if b.admins[id] {
+			continue // set above, with admin commands
+		}
+		if ctx.Err() != nil || !b.chatMenu(ctx, id, lang) {
+			return false
+		}
+		time.Sleep(50 * time.Millisecond) // stay under ~30 req/s
+	}
+	if err := b.st.SetSetting(menuSumKey, sum); err != nil {
+		log.Printf("db: %v", err)
+	}
 	return true
+}
+
+const menuSumKey = "user_menu_sum"
+
+// menuSum fingerprints the user command menus.
+func menuSum() string {
+	j, _ := json.Marshal(i18n.Commands) // map keys are sorted: stable output
+	h := sha256.Sum256(j)
+	return hex.EncodeToString(h[:])
 }
 
 // isAPIError tells a Telegram answer (bad request, chat not found, …) from

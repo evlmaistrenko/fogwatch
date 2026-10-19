@@ -444,7 +444,7 @@ func TestRunGivesUpWhenOffline(t *testing.T) {
 	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	url := tg.URL
 	tg.Close() // connection refused from now on
-	b := New(telegram.NewAt(url+"/"), nil, nil, nil, time.UTC, "test")
+	b := New(telegram.NewAt(url+"/"), testStore(t), nil, nil, time.UTC, "test")
 	b.maxOffline = 0
 	if err := b.Run(context.Background()); err == nil {
 		t.Fatal("Run returned nil while Telegram was unreachable")
@@ -460,7 +460,7 @@ func TestRunGivesUpWhenOffline(t *testing.T) {
 		w.Write([]byte(`{"ok":false,"error_code":409,"description":"Conflict"}`))
 	}))
 	defer tg.Close()
-	b = New(telegram.NewAt(tg.URL+"/"), nil, nil, nil, time.UTC, "test")
+	b = New(telegram.NewAt(tg.URL+"/"), testStore(t), nil, nil, time.UTC, "test")
 	b.maxOffline = 0
 	if err := b.Run(ctx); err != nil {
 		t.Fatalf("Run on API error: %v", err)
@@ -509,11 +509,54 @@ func TestMenusRetriedWhenBackOnline(t *testing.T) {
 		}
 	}))
 	defer tg.Close()
-	b = New(telegram.NewAt(tg.URL+"/"), nil, nil, nil, time.UTC, "test")
+	b = New(telegram.NewAt(tg.URL+"/"), testStore(t), nil, nil, time.UTC, "test")
 	if err := b.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := menuCalls.Load(), int32(1+len(menuCodes)); got != want {
 		t.Fatalf("setMyCommands calls: %d, want %d", got, want)
+	}
+}
+
+func testStore(t *testing.T) *store.Store {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	return st
+}
+
+func TestUserMenusRefreshedOnChange(t *testing.T) {
+	var chats []int64
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m struct {
+			Scope struct {
+				ChatID int64 `json:"chat_id"`
+			}
+		}
+		json.NewDecoder(r.Body).Decode(&m)
+		if m.Scope.ChatID != 0 {
+			chats = append(chats, m.Scope.ChatID)
+		}
+		w.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	defer tg.Close()
+	st := testStore(t)
+	st.SetLang(7, "ru")
+	st.Touch(8, "en") // follows the client: no chat menu
+	b := New(telegram.NewAt(tg.URL+"/"), st, nil, nil, time.UTC, "test")
+
+	if !b.setupMenus(context.Background()) || len(chats) != 1 || chats[0] != 7 {
+		t.Fatalf("first start: chat menus %v", chats)
+	}
+	chats = nil
+	if !b.setupMenus(context.Background()) || len(chats) != 0 {
+		t.Fatalf("unchanged commands: chat menus %v", chats)
+	}
+	st.SetSetting(menuSumKey, "old")
+	if !b.setupMenus(context.Background()) || len(chats) != 1 {
+		t.Fatalf("changed commands: chat menus %v", chats)
 	}
 }
