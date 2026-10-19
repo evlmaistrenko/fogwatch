@@ -77,7 +77,6 @@ func run() error {
 		loc,
 		version,
 	)
-	go b.SetupMenus(ctx) // best effort; must not hold up polling
 
 	// Search every 3 hours. SkipIfStillRunning: a slow search never overlaps.
 	c := cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger)))

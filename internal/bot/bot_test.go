@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -451,9 +452,9 @@ func TestRunGivesUpWhenOffline(t *testing.T) {
 
 	// Telegram errors mean the network is up: keep polling until cancelled.
 	ctx, cancel := context.WithCancel(context.Background())
-	polls := 0
+	var polls atomic.Int32
 	tg = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if polls++; polls == 2 {
+		if r.URL.Path == "/getUpdates" && polls.Add(1) == 2 {
 			cancel()
 		}
 		w.Write([]byte(`{"ok":false,"error_code":409,"description":"Conflict"}`))
@@ -479,8 +480,40 @@ func TestSetupMenusStopsWhenOffline(t *testing.T) {
 	}
 	defer st.Close()
 	b := New(telegram.NewAt(tg.URL+"/"), st, nil, map[int64]bool{42: true}, time.UTC, "test")
-	b.SetupMenus(context.Background())
+	if b.setupMenus(context.Background()) {
+		t.Fatal("setupMenus reported success after a network error")
+	}
 	if calls != 1 {
 		t.Fatalf("calls after a network error: %d, want 1", calls)
+	}
+}
+
+func TestMenusRetriedWhenBackOnline(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var b *Bot
+	var menuCalls atomic.Int32
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/getUpdates":
+			if b.menus.Load() == menusSet {
+				cancel()
+			}
+			w.Write([]byte(`{"ok":true,"result":[]}`))
+		case "/setMyCommands":
+			if menuCalls.Add(1) == 1 {
+				w.Write([]byte(`not json`)) // offline on the first try
+				return
+			}
+			w.Write([]byte(`{"ok":true,"result":true}`))
+		}
+	}))
+	defer tg.Close()
+	b = New(telegram.NewAt(tg.URL+"/"), nil, nil, nil, time.UTC, "test")
+	if err := b.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := menuCalls.Load(), int32(1+len(menuCodes)); got != want {
+		t.Fatalf("setMyCommands calls: %d, want %d", got, want)
 	}
 }
