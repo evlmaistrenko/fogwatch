@@ -93,7 +93,8 @@ Admin (shown in the admin's menu):
   (any model; Exa fallback for models without native search, billed extra).
 - AI results are filtered: code must match `[A-Z0-9-]{4,30}`, have a source
   URL, and not be past its expiry. Codes without a known expiry stay active
-  until an admin removes them.
+  until an admin removes them, but `/start` only sends the ones added within
+  the last 7 days; `/codes` lists them all.
 
 ## Storage
 

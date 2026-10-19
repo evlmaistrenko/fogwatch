@@ -84,10 +84,10 @@ menus). Tests sit next to the code as `*_test.go`.
   `html.EscapeString`.
 - `callback_data` ≤ 64 bytes. Prefixes in use: `l:` (language), `ok:`/`no:`
   (moderation), `p:` (`/codes` pages). Admin-only callbacks re-check `b.admins`.
-- One code per message with a `copy_text` button; users delete the message to
-  mark a code as used. No per-user code state — keep it that way. `/codes` is
-  the one paged overview: a single message edited in place, a copy button per
-  code.
+- Broadcasts and `/start` send one code per message with a `copy_text`
+  button; users track codes with Telegram itself (delete redeemed ones, react,
+  pin, …). No per-user code state — keep it that way. `/codes` is the one
+  paged overview: a single message edited in place, a copy button per code.
 - Never log the bot token (`internal/telegram` strips URLs from
   errors).
 
