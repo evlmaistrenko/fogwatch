@@ -80,7 +80,8 @@ Admin (shown in the admin's menu):
   tombstone so search won't bring it back. With several admins the first
   click wins. Admins must have pressed /start to receive cards.
 - A published code is sent once to every user, as its own message with a 📋
-  copy button. No per-user state: redeemed = delete the message in Telegram.
+  copy button. No per-user state: users track codes with Telegram itself
+  (delete redeemed ones, react, pin, …).
   Users who blocked the bot are removed on the next send.
 - Flood control (429) is retried with Telegram's retry_after.
 - LLM: Responses API at `OPENAI_BASE_URL`. Web search uses OpenAI's
