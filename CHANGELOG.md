@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/evlmaistrenko/fogwatch/compare/v0.1.2...v0.1.3) (2026-10-19)
+
+
+### Features
+
+* suggest telegram tools for tracking codes in help ([#10](https://github.com/evlmaistrenko/fogwatch/issues/10)) ([3b4de93](https://github.com/evlmaistrenko/fogwatch/commit/3b4de937c2d4693bcad4457046f3db84195f4445))
+
 ## [0.1.2](https://github.com/evlmaistrenko/fogwatch/compare/v0.1.1...v0.1.2) (2026-10-18)
 
 
