@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/evlmaistrenko/fogwatch/compare/v0.1.5...v1.0.0) (2026-10-19)
+
+
+### Features
+
+* page /codes, send only fresh codes on /start ([#15](https://github.com/evlmaistrenko/fogwatch/issues/15)) ([39713ab](https://github.com/evlmaistrenko/fogwatch/commit/39713abeaf72c7ae50715f65b5eb550d7032d0fb))
+
 ## [0.1.5](https://github.com/evlmaistrenko/fogwatch/compare/v0.1.4...v0.1.5) (2026-10-19)
 
 
