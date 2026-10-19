@@ -231,7 +231,7 @@ func (b *Bot) onMessage(ctx context.Context, m *telegram.Message) {
 			{{Text: "Русский", CallbackData: "l:ru"}, {Text: "English", CallbackData: "l:en"}},
 			{{Text: i18n.T(lang, "lang_auto_btn"), CallbackData: "l:auto"}},
 		}})
-	case "/add", "/del", "/fetch", "/pending":
+	case "/add", "/del", "/fetch", "/pending", "/stats":
 		if !isAdmin {
 			b.reply(ctx, chat, i18n.T(lang, "no_access"), nil)
 			return
@@ -245,6 +245,8 @@ func (b *Bot) onMessage(ctx context.Context, m *telegram.Message) {
 			b.adminDel(ctx, chat, lang, args)
 		case "/fetch":
 			go b.adminFetch(ctx, chat, lang)
+		case "/stats":
+			b.cmdStats(ctx, chat, lang)
 		}
 	default:
 		b.reply(ctx, chat, b.help(lang, isAdmin), nil)
@@ -664,6 +666,35 @@ func (b *Bot) adminFetch(ctx context.Context, chat int64, lang string) {
 	default:
 		b.reply(ctx, chat, i18n.T(lang, "fetch_done", found, added), nil)
 	}
+}
+
+// statsDays is the "new in the last N days" window of /stats.
+const statsDays = 7
+
+func (b *Bot) cmdStats(ctx context.Context, chat int64, lang string) {
+	st, err := b.st.Stats(b.today(), time.Now().AddDate(0, 0, -statsDays))
+	if err != nil {
+		b.dbFail(ctx, chat, lang, err)
+		return
+	}
+	b.reply(ctx, chat, b.statsText(lang, st), nil)
+}
+
+func (b *Bot) statsText(lang string, st store.Stats) string {
+	t := func(key string, args ...any) string { return i18n.T(lang, key, args...) }
+	var sb strings.Builder
+	sb.WriteString(t("stats_title"))
+	sb.WriteString(t("stats_users", st.Users, len(b.admins)))
+	sb.WriteString(t("stats_new", statsDays, st.NewUsers))
+	sb.WriteString(t("stats_langs", st.UserLangs["ru"], st.UserLangs["en"]))
+	sb.WriteString(t("stats_codes", st.TotalCodes()))
+	sb.WriteString(t("stats_published", st.Codes[store.StatusPublished], st.Active, st.Expired))
+	sb.WriteString(t("stats_pending", st.Codes[store.StatusPending]))
+	sb.WriteString(t("stats_rejected", st.Codes[store.StatusRejected]))
+	sb.WriteString(t("stats_removed", st.Codes[store.StatusRemoved]))
+	sb.WriteString(t("stats_new", statsDays, st.NewCodes))
+	sb.WriteString(t("stats_sources", st.BySource["ai"], st.BySource["admin"]))
+	return sb.String()
 }
 
 // ---------- jobs ----------

@@ -400,3 +400,41 @@ func TestStartSetsAdminMenu(t *testing.T) {
 		}
 	}
 }
+
+func TestStats(t *testing.T) {
+	var sent []string
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m struct{ Text string }
+		json.NewDecoder(r.Body).Decode(&m)
+		if r.URL.Path == "/sendMessage" {
+			sent = append(sent, m.Text)
+		}
+		w.Write([]byte(`{"ok":true,"result":{}}`))
+	}))
+	defer tg.Close()
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := New(telegram.NewAt(tg.URL+"/"), st, nil, map[int64]bool{42: true}, time.UTC, "test")
+	msg := func(from int64) *telegram.Message {
+		return &telegram.Message{From: &telegram.User{ID: from, LanguageCode: "en"}, Chat: telegram.Chat{ID: from, Type: "private"}, Text: "/stats"}
+	}
+	st.Upsert(store.Code{Code: "PEND1", Source: "ai"})
+	st.Upsert(store.Code{Code: "LIVE1", Source: "admin"})
+
+	b.onMessage(context.Background(), msg(7))
+	if len(sent) != 1 || sent[0] != i18n.T("en", "no_access") {
+		t.Fatalf("non-admin: %q", sent)
+	}
+	sent = nil
+	b.onMessage(context.Background(), msg(42))
+	if len(sent) != 1 {
+		t.Fatalf("admin: %q", sent)
+	}
+	for _, want := range []string{"Users: 2</b> (admins: 1)", "Codes: 2</b>", "published: 1 (🎁 active 1", "pending: 1", "search 1, admin 1"} {
+		if !strings.Contains(sent[0], want) {
+			t.Fatalf("missing %q in %q", want, sent[0])
+		}
+	}
+}

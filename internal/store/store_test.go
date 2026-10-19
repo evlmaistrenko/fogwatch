@@ -140,3 +140,41 @@ func TestLang(t *testing.T) {
 		t.Fatal("auto not restored")
 	}
 }
+
+func TestStats(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "bot.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Touch(1, "ru")
+	st.Touch(2, "en")
+	st.Touch(3, "en")
+	st.SetLang(3, "ru")
+	st.Upsert(Code{Code: "PEND1", Source: "ai"})
+	st.Upsert(Code{Code: "REJE1", Source: "ai"})
+	st.Moderate("REJE1", StatusRejected)
+	st.Upsert(Code{Code: "LIVE1", Source: "admin"})
+	st.Upsert(Code{Code: "LIVE2", Source: "admin", Expires: "2099-01-01"})
+	st.Upsert(Code{Code: "OLD01", Source: "admin", Expires: "2000-01-01"})
+	st.Upsert(Code{Code: "GONE1", Source: "admin"})
+	st.Remove("GONE1")
+
+	today := time.Now().UTC().Format(time.DateOnly)
+	s, err := st.Stats(today, time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Users != 3 || s.NewUsers != 3 || s.UserLangs["ru"] != 2 || s.UserLangs["en"] != 1 {
+		t.Fatalf("users: %+v", s)
+	}
+	if s.TotalCodes() != 6 || s.NewCodes != 6 || s.Codes[StatusPending] != 1 || s.Codes[StatusRejected] != 1 ||
+		s.Codes[StatusPublished] != 3 || s.Codes[StatusRemoved] != 1 || s.Active != 2 || s.Expired != 1 {
+		t.Fatalf("codes: %+v", s)
+	}
+	if s.BySource["ai"] != 2 || s.BySource["admin"] != 4 {
+		t.Fatalf("sources: %+v", s.BySource)
+	}
+	if s, _ := st.Stats(today, time.Now().Add(time.Hour)); s.NewUsers != 0 || s.NewCodes != 0 {
+		t.Fatalf("new since the future: %+v", s)
+	}
+}

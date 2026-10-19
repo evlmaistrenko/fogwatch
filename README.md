@@ -70,6 +70,8 @@ Admin (shown in the admin's menu):
                                       "ru text | en text" sets both languages
     /del CODE                         tombstone: search won't re-add it
     /fetch                            search now
+    /stats                            users (new in 7 days, language),
+                                      codes by status and source
 
 ## Behaviour
 
