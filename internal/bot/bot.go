@@ -39,11 +39,6 @@ type Bot struct {
 	// cron runs one at a time (SkipIfStillRunning).
 	fetchFails   int
 	fetchAlerted bool
-
-	// Last finished search (cron or /fetch) for /stats; in memory only.
-	lastMu      sync.Mutex
-	lastFetch   time.Time
-	lastFetchOK bool
 }
 
 const (
@@ -699,19 +694,6 @@ func (b *Bot) statsText(lang string, st store.Stats) string {
 	sb.WriteString(t("stats_removed", st.Codes[store.StatusRemoved]))
 	sb.WriteString(t("stats_new", statsDays, st.NewCodes))
 	sb.WriteString(t("stats_sources", st.BySource["ai"], st.BySource["admin"]))
-
-	b.lastMu.Lock()
-	last, ok := b.lastFetch, b.lastFetchOK
-	b.lastMu.Unlock()
-	if last.IsZero() {
-		sb.WriteString(t("stats_search_none"))
-		return sb.String()
-	}
-	key := "stats_search_ok"
-	if !ok {
-		key = "stats_search_err"
-	}
-	sb.WriteString(t(key, last.In(b.loc).Format("2006-01-02 15:04")))
 	return sb.String()
 }
 
@@ -726,11 +708,6 @@ func (b *Bot) Fetch(ctx context.Context) (found, added int, err error) {
 		return 0, 0, errBusy
 	}
 	defer b.fetchMu.Unlock()
-	defer func() {
-		b.lastMu.Lock()
-		b.lastFetch, b.lastFetchOK = time.Now(), err == nil
-		b.lastMu.Unlock()
-	}()
 
 	today := b.today()
 	known, err := b.st.KnownCodes(knownCodesInPrompt)

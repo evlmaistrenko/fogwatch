@@ -71,8 +71,7 @@ Admin (shown in the admin's menu):
     /del CODE                         tombstone: search won't re-add it
     /fetch                            search now
     /stats                            users (new in 7 days, language),
-                                      codes by status and source, last
-                                      search time and result
+                                      codes by status and source
 
 ## Behaviour
 

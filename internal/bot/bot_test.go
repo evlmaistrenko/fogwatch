@@ -432,14 +432,9 @@ func TestStats(t *testing.T) {
 	if len(sent) != 1 {
 		t.Fatalf("admin: %q", sent)
 	}
-	for _, want := range []string{"Users: 2</b> (admins: 1)", "Codes: 2</b>", "published: 1 (🎁 active 1", "pending: 1", "search 1, admin 1", "No search since"} {
+	for _, want := range []string{"Users: 2</b> (admins: 1)", "Codes: 2</b>", "published: 1 (🎁 active 1", "pending: 1", "search 1, admin 1"} {
 		if !strings.Contains(sent[0], want) {
 			t.Fatalf("missing %q in %q", want, sent[0])
 		}
-	}
-
-	b.lastFetch, b.lastFetchOK = time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC), false
-	if s := b.statsText("ru", store.Stats{}); !strings.Contains(s, "2026-10-19 09:00, с ошибкой") {
-		t.Fatalf("last search: %q", s)
 	}
 }
