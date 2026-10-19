@@ -135,9 +135,34 @@ func TestLang(t *testing.T) {
 	if touch("en") != "ru" || st.Lang(1) != "ru" {
 		t.Fatal("explicit choice not kept")
 	}
+	st.Touch(2, "en")
+	if m, err := st.ChosenLangs(); err != nil || len(m) != 1 || m[1] != "ru" {
+		t.Fatalf("ChosenLangs: %v %v", m, err)
+	}
 	st.SetLang(1, "")
 	if touch("en") != "en" {
 		t.Fatal("auto not restored")
+	}
+	if m, _ := st.ChosenLangs(); len(m) != 0 {
+		t.Fatalf("ChosenLangs after auto: %v", m)
+	}
+}
+
+func TestSetting(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "bot.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := st.Setting("k"); v != "" {
+		t.Fatalf("unset: %q", v)
+	}
+	for _, v := range []string{"a", "b"} {
+		if err := st.SetSetting("k", v); err != nil {
+			t.Fatal(err)
+		}
+		if got := st.Setting("k"); got != v {
+			t.Fatalf("got %q, want %q", got, v)
+		}
 	}
 }
 
