@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/evlmaistrenko/fogwatch/compare/v1.0.0...v1.1.0) (2026-10-19)
+
+
+### Features
+
+* add admin /stats command ([#22](https://github.com/evlmaistrenko/fogwatch/issues/22)) ([04f9294](https://github.com/evlmaistrenko/fogwatch/commit/04f9294b040c01d1d397afd39600292fd2919088))
+
 ## [1.0.0](https://github.com/evlmaistrenko/fogwatch/compare/v0.1.5...v1.0.0) (2026-10-19)
 
 
