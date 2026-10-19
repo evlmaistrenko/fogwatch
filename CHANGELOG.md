@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.4](https://github.com/evlmaistrenko/fogwatch/compare/v0.1.3...v0.1.4) (2026-10-19)
+
+
+### Features
+
+* set ru and en rewards in /add, drop plain-code shortcut ([#12](https://github.com/evlmaistrenko/fogwatch/issues/12)) ([4202c28](https://github.com/evlmaistrenko/fogwatch/commit/4202c284c56af4b1ef497c91e39fb01870bf453d))
+
+
+### Bug Fixes
+
+* switch command menu to the language chosen in /lang ([#14](https://github.com/evlmaistrenko/fogwatch/issues/14)) ([9341b44](https://github.com/evlmaistrenko/fogwatch/commit/9341b4481123d9ecaad31718c230059c2fe23f5c))
+
 ## [0.1.3](https://github.com/evlmaistrenko/fogwatch/compare/v0.1.2...v0.1.3) (2026-10-19)
 
 
