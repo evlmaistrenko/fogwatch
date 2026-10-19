@@ -3,9 +3,12 @@ package bot
 import (
 	"context"
 	"errors"
+	"fmt"
 	"html"
 	"log"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +24,10 @@ var (
 	dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 )
 
-const allChunk = 40 // lines per /all message (text limit 4096)
+const (
+	allChunk = 40 // lines per /all message (text limit 4096)
+	listPage = 10 // codes per /list page; copy buttons go two per row
+)
 
 type Bot struct {
 	tg      *telegram.Client
@@ -31,6 +37,10 @@ type Bot struct {
 	loc     *time.Location
 	version string
 	fetchMu sync.Mutex
+
+	// FreshFor limits /start and /codes to codes without an expiry date that
+	// were added within this long; older ones are only in /list. 0 = no limit.
+	FreshFor time.Duration
 
 	// Scheduled-search health; touched only by ScheduledFetch, which the
 	// cron runs one at a time (SkipIfStillRunning).
@@ -44,7 +54,7 @@ const (
 )
 
 func New(tg *telegram.Client, st *store.Store, llm *ai.Client, admins map[int64]bool, loc *time.Location, version string) *Bot {
-	return &Bot{tg: tg, st: st, ai: llm, admins: admins, loc: loc, version: version}
+	return &Bot{tg: tg, st: st, ai: llm, admins: admins, loc: loc, version: version, FreshFor: 7 * 24 * time.Hour}
 }
 
 // menuCodes are the client language codes menus are set for, "" being the
@@ -212,6 +222,13 @@ func (b *Bot) onMessage(ctx context.Context, m *telegram.Message) {
 		b.reply(ctx, chat, b.help(lang, isAdmin), nil)
 	case "/codes":
 		b.cmdCodes(ctx, chat, lang)
+	case "/list":
+		text, kb, err := b.listPage(lang, 0)
+		if err != nil {
+			b.dbFail(ctx, chat, lang, err)
+			return
+		}
+		b.reply(ctx, chat, text, kb)
 	case "/lang":
 		b.reply(ctx, chat, i18n.T(lang, "pick_lang"), &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{
 			{{Text: "Русский", CallbackData: "l:ru"}, {Text: "English", CallbackData: "l:en"}},
@@ -247,18 +264,90 @@ func (b *Bot) help(lang string, isAdmin bool) string {
 	return t + i18n.T(lang, "version", html.EscapeString(b.version))
 }
 
+// cmdCodes sends active codes, leaving out the ones without an expiry date
+// added more than FreshFor ago: those would otherwise pile up in every
+// /start and /codes. /list has them all.
 func (b *Bot) cmdCodes(ctx context.Context, chat int64, lang string) {
 	codes, err := b.st.Active(b.today())
-	switch {
-	case err != nil:
+	if err != nil {
 		b.dbFail(ctx, chat, lang, err)
+		return
+	}
+	fresh, stale := b.splitStale(codes)
+	switch {
 	case len(codes) == 0:
 		b.reply(ctx, chat, i18n.T(lang, "no_codes"), nil)
-	default:
-		if err := b.sendCodes(ctx, chat, lang, "🎁", codes); err != nil {
-			log.Printf("send codes %d: %v", chat, err)
+		return
+	case len(fresh) == 0:
+		b.reply(ctx, chat, i18n.T(lang, "no_fresh", b.freshDays(), stale), nil)
+		return
+	}
+	if err := b.sendCodes(ctx, chat, lang, "🎁", fresh); err != nil {
+		log.Printf("send codes %d: %v", chat, err)
+		return
+	}
+	if stale > 0 {
+		b.reply(ctx, chat, i18n.T(lang, "more_codes", b.freshDays(), stale), nil)
+	}
+}
+
+// splitStale drops codes without an expiry date older than FreshFor and
+// counts them.
+func (b *Bot) splitStale(codes []store.Code) (fresh []store.Code, stale int) {
+	if b.FreshFor <= 0 {
+		return codes, 0
+	}
+	since := time.Now().Add(-b.FreshFor)
+	for _, c := range codes {
+		if c.Expires == "" && c.CreatedAt.Before(since) {
+			stale++
+			continue
+		}
+		fresh = append(fresh, c)
+	}
+	return fresh, stale
+}
+
+func (b *Bot) freshDays() int { return max(1, int(b.FreshFor.Round(24*time.Hour)/(24*time.Hour))) }
+
+// listPage renders page (0-based, clamped) of all active codes, newest
+// first: one message edited in place by the ◀️/▶️ buttons ("p:<page>"),
+// with a copy button per code.
+func (b *Bot) listPage(lang string, page int) (string, *telegram.Keyboard, error) {
+	codes, err := b.st.Active(b.today())
+	if err != nil || len(codes) == 0 {
+		return i18n.T(lang, "no_codes"), nil, err
+	}
+	slices.Reverse(codes)
+	pages := (len(codes) + listPage - 1) / listPage
+	page = max(0, min(page, pages-1))
+	codes = codes[page*listPage : min((page+1)*listPage, len(codes))]
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, "list"))
+	kb := &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{}}
+	for i, c := range codes {
+		sb.WriteString("\n🎁 " + codeLine(lang, c))
+		btn := telegram.Button{Text: "📋 " + c.Code, CopyText: &telegram.CopyText{Text: c.Code}}
+		if i%2 == 0 {
+			kb.InlineKeyboard = append(kb.InlineKeyboard, []telegram.Button{btn})
+		} else {
+			last := len(kb.InlineKeyboard) - 1
+			kb.InlineKeyboard[last] = append(kb.InlineKeyboard[last], btn)
 		}
 	}
+	if pages > 1 {
+		nav := []telegram.Button{}
+		if page > 0 {
+			nav = append(nav, telegram.Button{Text: "◀️", CallbackData: "p:" + strconv.Itoa(page-1)})
+		}
+		nav = append(nav, telegram.Button{Text: fmt.Sprintf("%d / %d", page+1, pages), CallbackData: "p:-"})
+		if page < pages-1 {
+			nav = append(nav, telegram.Button{Text: "▶️", CallbackData: "p:" + strconv.Itoa(page+1)})
+		}
+		kb.InlineKeyboard = append(kb.InlineKeyboard, nav)
+	}
+	return sb.String(), kb, nil
 }
 
 // cmdAll is a compact text list of everything in the database.
@@ -322,6 +411,20 @@ func (b *Bot) onCallback(ctx context.Context, q *telegram.CallbackQuery) {
 		}
 	case "ok", "no":
 		b.onModerate(ctx, q, kind == "ok", val)
+	case "p":
+		_ = b.tg.Answer(ctx, q.ID, "")
+		page, err := strconv.Atoi(val)
+		if err != nil || q.Message == nil {
+			return // "p:-" is the page counter
+		}
+		text, kb, err := b.listPage(b.st.Lang(q.From.ID), page)
+		if err != nil {
+			log.Printf("db: %v", err)
+			return
+		}
+		if err := b.tg.EditText(ctx, q.Message.Chat.ID, q.Message.MessageID, text, kb); err != nil {
+			log.Printf("edit: %v", err)
+		}
 	default:
 		_ = b.tg.Answer(ctx, q.ID, "")
 	}

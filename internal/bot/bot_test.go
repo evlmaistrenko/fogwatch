@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -197,7 +198,7 @@ func TestChatMenuFollowsChosenLang(t *testing.T) {
 	ctx := context.Background()
 
 	b.chatMenu(ctx, 7, "en")
-	if len(calls) != 1 || calls[0] != (call{"setMyCommands", "", "Active codes", 7}) {
+	if len(calls) != 1 || calls[0] != (call{"setMyCommands", "", "Recent codes", 7}) {
 		t.Fatalf("user en: %+v", calls)
 	}
 	calls = nil
@@ -213,7 +214,7 @@ func TestChatMenuFollowsChosenLang(t *testing.T) {
 		t.Fatalf("admin en: %+v", calls)
 	}
 	for _, c := range calls {
-		if c.chat != 42 || c.first != "Active codes" {
+		if c.chat != 42 || c.first != "Recent codes" {
 			t.Fatalf("admin en: %+v", calls)
 		}
 	}
@@ -222,6 +223,86 @@ func TestChatMenuFollowsChosenLang(t *testing.T) {
 	for _, c := range calls {
 		if want := i18n.Commands[menuLang(c.lang)][0].Description; c.first != want {
 			t.Fatalf("admin auto %q: got %q, want %q", c.lang, c.first, want)
+		}
+	}
+}
+
+func TestStaleCodesOnlyInList(t *testing.T) {
+	var sent []string
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m struct{ Text string }
+		json.NewDecoder(r.Body).Decode(&m)
+		sent = append(sent, m.Text)
+		w.Write([]byte(`{"ok":true,"result":{}}`))
+	}))
+	defer tg.Close()
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := New(telegram.NewAt(tg.URL+"/"), st, nil, nil, time.UTC, "test")
+	ctx := context.Background()
+	old := time.Now().Add(-30 * 24 * time.Hour)
+
+	st.Upsert(store.Code{Code: "OLD01", Source: "admin", CreatedAt: old})
+	b.cmdCodes(ctx, 7, "en")
+	if len(sent) != 1 || !strings.Contains(sent[0], "No new codes in the last 7 days. All active codes (1): /list") {
+		t.Fatalf("only stale: %q", sent)
+	}
+
+	// Old but with an expiry date, and new without one: both shown.
+	st.Upsert(store.Code{Code: "OLD02", Source: "admin", Expires: "2099-01-01", CreatedAt: old})
+	st.Upsert(store.Code{Code: "NEW01", Source: "admin"})
+	sent = nil
+	b.cmdCodes(ctx, 7, "en")
+	if len(sent) != 3 || !strings.Contains(sent[0], "OLD02") || !strings.Contains(sent[1], "NEW01") ||
+		!strings.HasSuffix(sent[2], "over 7 days ago): 1 — /list") {
+		t.Fatalf("mixed: %q", sent)
+	}
+
+	b.FreshFor = 0
+	sent = nil
+	b.cmdCodes(ctx, 7, "en")
+	if len(sent) != 3 || !strings.Contains(sent[0], "OLD01") {
+		t.Fatalf("no limit: %q", sent)
+	}
+}
+
+func TestListPages(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := New(nil, st, nil, nil, time.UTC, "test")
+	if text, kb, err := b.listPage("en", 0); err != nil || kb != nil || !strings.Contains(text, "No active codes") {
+		t.Fatalf("empty: %q %+v %v", text, kb, err)
+	}
+	start := time.Now().Add(-time.Hour)
+	for i := range 23 {
+		st.Upsert(store.Code{Code: fmt.Sprintf("CODE%02d", i), Source: "admin", CreatedAt: start.Add(time.Duration(i) * time.Minute)})
+	}
+
+	text, kb, _ := b.listPage("en", 0)
+	rows := kb.InlineKeyboard
+	if !strings.Contains(text, "CODE22") || strings.Contains(text, "CODE12") || len(rows) != 6 {
+		t.Fatalf("page 1: %q %+v", text, rows)
+	}
+	if c := rows[0][0]; c.CopyText == nil || c.CopyText.Text != "CODE22" || len(rows[0]) != 2 {
+		t.Fatalf("copy buttons: %+v", rows[0])
+	}
+	if nav := rows[5]; len(nav) != 2 || nav[0].Text != "1 / 3" || nav[1].CallbackData != "p:1" {
+		t.Fatalf("nav 1: %+v", nav)
+	}
+
+	// Last page, also when asked for one past it (codes removed meanwhile).
+	for _, p := range []int{2, 9} {
+		text, kb, _ = b.listPage("en", p)
+		rows = kb.InlineKeyboard
+		if !strings.Contains(text, "CODE00") || strings.Count(text, "🎁") != 3 || len(rows) != 3 {
+			t.Fatalf("page %d: %q %+v", p, text, rows)
+		}
+		if nav := rows[2]; len(nav) != 2 || nav[0].CallbackData != "p:1" || nav[1].Text != "3 / 3" {
+			t.Fatalf("nav %d: %+v", p, nav)
 		}
 	}
 }

@@ -83,9 +83,11 @@ menus). Tests sit next to the code as `*_test.go`.
 - Messages use `parse_mode: HTML`: escape every dynamic value with
   `html.EscapeString`.
 - `callback_data` ≤ 64 bytes. Prefixes in use: `l:` (language), `ok:`/`no:`
-  (moderation). Admin-only callbacks re-check `b.admins`.
+  (moderation), `p:` (`/list` pages). Admin-only callbacks re-check `b.admins`.
 - One code per message with a `copy_text` button; users delete the message to
-  mark a code as used. No per-user code state — keep it that way.
+  mark a code as used. No per-user code state — keep it that way. `/list` is
+  the one paged overview: a single message edited in place, a copy button per
+  code.
 - Never log the bot token (`internal/telegram` strips URLs from
   errors).
 

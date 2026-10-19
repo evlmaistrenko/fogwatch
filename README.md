@@ -52,11 +52,14 @@ Environment variables (see [.env.example](.env.example)):
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | any Responses API, e.g. `https://openrouter.ai/api/v1` |
 | `OPENAI_MODEL` | `gpt-5-mini` | `openai/gpt-5-mini` on OpenRouter |
 | `TZ` | `UTC` | "today" for code expiry, search schedule, log timestamps |
+| `FRESH_DAYS` | `7` | `/start` and `/codes` skip codes without an expiry date added longer ago; `0` = show all |
 
 ## Commands
 
-    /start    help + all active codes
-    /codes    active codes, one message each
+    /start    help + recent codes
+    /codes    recent active codes, one message each (without an expiry
+              date: added within FRESH_DAYS)
+    /list     all active codes, one message with pages and copy buttons
     /lang     ru / en / same as Telegram (default)
 
 Admin (shown in the admin's menu):

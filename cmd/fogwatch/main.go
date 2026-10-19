@@ -53,6 +53,11 @@ func main() {
 		}
 	}
 
+	freshDays, err := strconv.Atoi(env("FRESH_DAYS", "7"))
+	if err != nil || freshDays < 0 {
+		log.Fatal("FRESH_DAYS: want a whole number of days, 0 = no limit")
+	}
+
 	// Relative to the working dir: ./data locally, /data (the volume) in Docker.
 	st, err := store.Open("data/db.sqlite")
 	if err != nil {
@@ -71,6 +76,7 @@ func main() {
 		loc,
 		version,
 	)
+	b.FreshFor = time.Duration(freshDays) * 24 * time.Hour
 	b.SetupMenus(ctx)
 
 	// Search every 3 hours. SkipIfStillRunning: a slow search never overlaps.
