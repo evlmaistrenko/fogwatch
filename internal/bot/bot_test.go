@@ -139,3 +139,32 @@ func TestHelpShowsVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminPlainCodeIsNotAdded(t *testing.T) {
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ok":true,"result":{}}`))
+	}))
+	defer tg.Close()
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := New(telegram.NewAt(tg.URL+"/"), st, nil, map[int64]bool{42: true}, time.UTC, "test")
+	msg := func(text string) *telegram.Message {
+		return &telegram.Message{From: &telegram.User{ID: 42}, Chat: telegram.Chat{ID: 42, Type: "private"}, Text: text}
+	}
+
+	b.onMessage(context.Background(), msg("AAAA1"))
+	if all, _ := st.All(); len(all) != 0 {
+		t.Fatalf("plain message added a code: %+v", all)
+	}
+	b.onMessage(context.Background(), msg("/add AAAA1 2099-01-01 Some reward"))
+	all, _ := st.All()
+	if len(all) != 1 || all[0].Code != "AAAA1" || all[0].RewardEN != "Some reward" {
+		t.Fatalf("/add: %+v", all)
+	}
+	b.onMessage(context.Background(), msg("/add AAAA1 Чары крови | Bloodpoints"))
+	if all, _ = st.All(); all[0].RewardRU != "Чары крови" || all[0].RewardEN != "Bloodpoints" {
+		t.Fatalf("/add ru|en: %+v", all)
+	}
+}

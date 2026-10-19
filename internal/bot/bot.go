@@ -202,11 +202,6 @@ func (b *Bot) onMessage(ctx context.Context, m *telegram.Message) {
 			go b.adminFetch(ctx, chat, lang)
 		}
 	default:
-		// Admin shortcut: a message that is just a code adds it.
-		if isAdmin && len(f) == 1 && codeRe.MatchString(normCode(f[0])) {
-			b.adminAdd(ctx, chat, lang, f)
-			return
-		}
 		b.reply(ctx, chat, b.help(lang, isAdmin), nil)
 	}
 }
@@ -406,8 +401,11 @@ func (b *Bot) adminAdd(ctx context.Context, chat int64, lang string, args []stri
 	if len(rest) > 0 && validDate(rest[0]) {
 		c.Expires, rest = rest[0], rest[1:]
 	}
-	if r := strings.Join(rest, " "); r != "" {
-		c.RewardEN, c.RewardRU = r, r
+	// "ru text | en text"; without "|" the same text is used for both.
+	ru, en, ok := strings.Cut(strings.Join(rest, " "), "|")
+	c.RewardRU, c.RewardEN = strings.TrimSpace(ru), strings.TrimSpace(en)
+	if !ok {
+		c.RewardEN = c.RewardRU
 	}
 	isNew, err := b.st.Upsert(c)
 	switch {
