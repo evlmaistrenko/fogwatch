@@ -37,8 +37,8 @@ The image is also on Docker Hub as `evlmaistrenko/fogwatch` (linux/amd64,
 linux/arm64). `latest` is the last release; pin `X.Y` or `X.Y.Z` to control
 updates; `main` follows every push to `main`. The version is logged at start.
 
-Press /start in the bot as an admin once, then restart it: the admin command
-menu needs an existing chat.
+Admins get their extended command menu after pressing /start in the bot; no
+restart needed.
 
 ## Configuration
 
