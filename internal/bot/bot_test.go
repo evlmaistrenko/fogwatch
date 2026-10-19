@@ -361,3 +361,42 @@ func TestListOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestStartSetsAdminMenu(t *testing.T) {
+	var menus []int64
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/setMyCommands" {
+			var m struct {
+				Scope struct {
+					ChatID int64 `json:"chat_id"`
+				}
+			}
+			json.NewDecoder(r.Body).Decode(&m)
+			menus = append(menus, m.Scope.ChatID)
+		}
+		w.Write([]byte(`{"ok":true,"result":{}}`))
+	}))
+	defer tg.Close()
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := New(telegram.NewAt(tg.URL+"/"), st, nil, map[int64]bool{42: true}, time.UTC, "test")
+	start := func(id int64) {
+		b.onMessage(context.Background(), &telegram.Message{From: &telegram.User{ID: id}, Chat: telegram.Chat{ID: id, Type: "private"}, Text: "/start"})
+	}
+
+	start(7)
+	if len(menus) != 0 {
+		t.Fatalf("user /start set menus: %v", menus)
+	}
+	start(42)
+	if len(menus) != len(menuCodes) {
+		t.Fatalf("admin /start: %v", menus)
+	}
+	for _, id := range menus {
+		if id != 42 {
+			t.Fatalf("admin /start: %v", menus)
+		}
+	}
+}

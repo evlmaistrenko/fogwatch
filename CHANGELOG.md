@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/evlmaistrenko/fogwatch/compare/v0.1.4...v0.1.5) (2026-10-19)
+
+
+### Bug Fixes
+
+* set admin command menu on /start without restart ([#16](https://github.com/evlmaistrenko/fogwatch/issues/16)) ([b8cc300](https://github.com/evlmaistrenko/fogwatch/commit/b8cc300964c0d9552150ecd848687820aabd4883))
+
 ## [0.1.4](https://github.com/evlmaistrenko/fogwatch/compare/v0.1.3...v0.1.4) (2026-10-19)
 
 

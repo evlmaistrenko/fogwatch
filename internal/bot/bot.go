@@ -66,7 +66,7 @@ func menuLang(code string) string {
 
 // SetupMenus sets the command menus: default for everyone, extended for
 // admins. An admin's chat menu fails with "chat not found" until they've
-// pressed /start once; restart after that.
+// pressed /start once; /start sets it again, so no restart is needed.
 func (b *Bot) SetupMenus(ctx context.Context) {
 	for _, code := range menuCodes {
 		if err := b.tg.SetCommands(ctx, i18n.Commands[menuLang(code)], code, 0); err != nil {
@@ -212,6 +212,9 @@ func (b *Bot) onMessage(ctx context.Context, m *telegram.Message) {
 
 	switch cmd {
 	case "/start":
+		if isAdmin {
+			b.chatMenu(ctx, uid, b.st.ChosenLang(uid))
+		}
 		b.reply(ctx, chat, b.help(lang, isAdmin), nil)
 		b.sendFresh(ctx, chat, lang)
 	case "/help":
