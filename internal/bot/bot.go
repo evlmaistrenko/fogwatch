@@ -47,24 +47,57 @@ func New(tg *telegram.Client, st *store.Store, llm *ai.Client, admins map[int64]
 	return &Bot{tg: tg, st: st, ai: llm, admins: admins, loc: loc, version: version}
 }
 
+// menuCodes are the client language codes menus are set for, "" being the
+// fallback for all others; menuLang maps each to a menu language.
+var menuCodes = []string{"", "ru", "uk", "be", "kk"}
+
+func menuLang(code string) string {
+	if code == "" {
+		return "en"
+	}
+	return i18n.Detect(code)
+}
+
 // SetupMenus sets the command menus: default for everyone, extended for
-// admins. "en" is the fallback for all other client languages. An admin's
-// chat menu fails with "chat not found" until they've pressed /start once;
-// restart after that.
+// admins. An admin's chat menu fails with "chat not found" until they've
+// pressed /start once; restart after that.
 func (b *Bot) SetupMenus(ctx context.Context) {
-	for lang, cmds := range i18n.Commands {
-		code := lang
-		if lang == "en" {
-			code = ""
+	for _, code := range menuCodes {
+		if err := b.tg.SetCommands(ctx, i18n.Commands[menuLang(code)], code, 0); err != nil {
+			log.Printf("setMyCommands %q: %v", code, err)
 		}
-		if err := b.tg.SetCommands(ctx, cmds, code, 0); err != nil {
-			log.Printf("setMyCommands %s: %v", lang, err)
+	}
+	for id := range b.admins {
+		b.chatMenu(ctx, id, b.st.ChosenLang(id))
+	}
+}
+
+// chatMenu pins a user's menu to the language chosen in /lang; chosen ""
+// goes back to the client language. Telegram picks the menu by the client
+// language, but a chat-scoped one wins, with language_code before without:
+// so users get one menu without it, and admins (whose chat menus carry admin
+// commands) get every language variant.
+func (b *Bot) chatMenu(ctx context.Context, id int64, chosen string) {
+	if !b.admins[id] {
+		var err error
+		if chosen == "" {
+			err = b.tg.DeleteCommands(ctx, "", id)
+		} else {
+			err = b.tg.SetCommands(ctx, i18n.Commands[chosen], "", id)
 		}
-		for id := range b.admins {
-			all := append(append([]telegram.Cmd{}, cmds...), i18n.AdminCommands[lang]...)
-			if err := b.tg.SetCommands(ctx, all, code, id); err != nil {
-				log.Printf("setMyCommands admin %d %s: %v", id, lang, err)
-			}
+		if err != nil {
+			log.Printf("chat menu %d: %v", id, err)
+		}
+		return
+	}
+	for _, code := range menuCodes {
+		lang := chosen
+		if lang == "" {
+			lang = menuLang(code)
+		}
+		all := append(append([]telegram.Cmd{}, i18n.Commands[lang]...), i18n.AdminCommands[lang]...)
+		if err := b.tg.SetCommands(ctx, all, code, id); err != nil {
+			log.Printf("setMyCommands admin %d %q: %v", id, code, err)
 		}
 	}
 }
@@ -274,6 +307,7 @@ func (b *Bot) onCallback(ctx context.Context, q *telegram.CallbackQuery) {
 			log.Printf("db: %v", err)
 			return
 		}
+		b.chatMenu(ctx, q.From.ID, choice)
 		lang, err := b.st.Touch(q.From.ID, i18n.Detect(q.From.LanguageCode))
 		if err != nil {
 			log.Printf("db: %v", err)

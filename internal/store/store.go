@@ -137,6 +137,13 @@ func (s *Store) Lang(id int64) string {
 	return u.Effective()
 }
 
+// ChosenLang returns the language picked in /lang, "" if none (follow the client).
+func (s *Store) ChosenLang(id int64) string {
+	var u User
+	s.db.Limit(1).Find(&u, id)
+	return u.Lang
+}
+
 // Users returns id -> language for everyone to broadcast to.
 func (s *Store) Users() (map[int64]string, error) {
 	var us []User
