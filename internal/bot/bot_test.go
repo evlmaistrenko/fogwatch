@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"fogwatch/internal/ai"
+	"fogwatch/internal/i18n"
 	"fogwatch/internal/store"
 	"fogwatch/internal/telegram"
 )
@@ -166,5 +167,61 @@ func TestAdminPlainCodeIsNotAdded(t *testing.T) {
 	b.onMessage(context.Background(), msg("/add AAAA1 Чары крови | Bloodpoints"))
 	if all, _ = st.All(); all[0].RewardRU != "Чары крови" || all[0].RewardEN != "Bloodpoints" {
 		t.Fatalf("/add ru|en: %+v", all)
+	}
+}
+
+func TestChatMenuFollowsChosenLang(t *testing.T) {
+	type call struct {
+		method, lang, first string
+		chat                int64
+	}
+	var calls []call
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m struct {
+			LanguageCode string `json:"language_code"`
+			Scope        struct {
+				ChatID int64 `json:"chat_id"`
+			}
+			Commands []telegram.Cmd `json:"commands"`
+		}
+		json.NewDecoder(r.Body).Decode(&m)
+		c := call{method: r.URL.Path[1:], lang: m.LanguageCode, chat: m.Scope.ChatID}
+		if len(m.Commands) > 0 {
+			c.first = m.Commands[0].Description
+		}
+		calls = append(calls, c)
+		w.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	defer tg.Close()
+	b := New(telegram.NewAt(tg.URL+"/"), nil, nil, map[int64]bool{42: true}, time.UTC, "test")
+	ctx := context.Background()
+
+	b.chatMenu(ctx, 7, "en")
+	if len(calls) != 1 || calls[0] != (call{"setMyCommands", "", "Active codes", 7}) {
+		t.Fatalf("user en: %+v", calls)
+	}
+	calls = nil
+	b.chatMenu(ctx, 7, "")
+	if len(calls) != 1 || calls[0] != (call{"deleteMyCommands", "", "", 7}) {
+		t.Fatalf("user auto: %+v", calls)
+	}
+
+	// Admin: every language variant of the chat menu.
+	calls = nil
+	b.chatMenu(ctx, 42, "en")
+	if len(calls) != len(menuCodes) {
+		t.Fatalf("admin en: %+v", calls)
+	}
+	for _, c := range calls {
+		if c.chat != 42 || c.first != "Active codes" {
+			t.Fatalf("admin en: %+v", calls)
+		}
+	}
+	calls = nil
+	b.chatMenu(ctx, 42, "")
+	for _, c := range calls {
+		if want := i18n.Commands[menuLang(c.lang)][0].Description; c.first != want {
+			t.Fatalf("admin auto %q: got %q, want %q", c.lang, c.first, want)
+		}
 	}
 }

@@ -188,12 +188,23 @@ type Cmd struct {
 // SetCommands sets the command menu. lang "" = fallback for all languages;
 // chatID 0 = default scope, otherwise only that chat (overrides the default).
 func (t *Client) SetCommands(ctx context.Context, cmds []Cmd, lang string, chatID int64) error {
-	req := map[string]any{"commands": cmds}
+	req := menuReq(lang, chatID)
+	req["commands"] = cmds
+	return t.call(ctx, "setMyCommands", req, nil)
+}
+
+// DeleteCommands removes the menu SetCommands set for the same lang and chatID.
+func (t *Client) DeleteCommands(ctx context.Context, lang string, chatID int64) error {
+	return t.call(ctx, "deleteMyCommands", menuReq(lang, chatID), nil)
+}
+
+func menuReq(lang string, chatID int64) map[string]any {
+	req := map[string]any{}
 	if lang != "" {
 		req["language_code"] = lang
 	}
 	if chatID != 0 {
 		req["scope"] = map[string]any{"type": "chat", "chat_id": chatID}
 	}
-	return t.call(ctx, "setMyCommands", req, nil)
+	return req
 }
