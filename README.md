@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/avatar.svg" alt="Fogwatch" width="160">
+  <img src="assets/description.gif" alt="Fogwatch" width="400">
 </p>
 
 # Fogwatch
