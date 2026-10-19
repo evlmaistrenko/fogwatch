@@ -38,6 +38,12 @@ func must(k string) string {
 }
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err) // non-zero exit: Docker restarts the container
+	}
+}
+
+func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 
@@ -71,7 +77,7 @@ func main() {
 		loc,
 		version,
 	)
-	b.SetupMenus(ctx)
+	go b.SetupMenus(ctx) // best effort; must not hold up polling
 
 	// Search every 3 hours. SkipIfStillRunning: a slow search never overlaps.
 	c := cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger)))
@@ -82,5 +88,5 @@ func main() {
 	defer func() { <-c.Stop().Done() }() // wait for a running job before closing the DB
 
 	log.Printf("fogwatch %s running; admins=%d", version, len(admins))
-	b.Run(ctx)
+	return b.Run(ctx)
 }

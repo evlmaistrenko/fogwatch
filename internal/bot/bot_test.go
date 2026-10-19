@@ -438,3 +438,49 @@ func TestStats(t *testing.T) {
 		}
 	}
 }
+
+func TestRunGivesUpWhenOffline(t *testing.T) {
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := tg.URL
+	tg.Close() // connection refused from now on
+	b := New(telegram.NewAt(url+"/"), nil, nil, nil, time.UTC, "test")
+	b.maxOffline = 0
+	if err := b.Run(context.Background()); err == nil {
+		t.Fatal("Run returned nil while Telegram was unreachable")
+	}
+
+	// Telegram errors mean the network is up: keep polling until cancelled.
+	ctx, cancel := context.WithCancel(context.Background())
+	polls := 0
+	tg = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if polls++; polls == 2 {
+			cancel()
+		}
+		w.Write([]byte(`{"ok":false,"error_code":409,"description":"Conflict"}`))
+	}))
+	defer tg.Close()
+	b = New(telegram.NewAt(tg.URL+"/"), nil, nil, nil, time.UTC, "test")
+	b.maxOffline = 0
+	if err := b.Run(ctx); err != nil {
+		t.Fatalf("Run on API error: %v", err)
+	}
+}
+
+func TestSetupMenusStopsWhenOffline(t *testing.T) {
+	calls := 0
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Write([]byte(`not json`)) // like a proxy error page: not a Telegram answer
+	}))
+	defer tg.Close()
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	b := New(telegram.NewAt(tg.URL+"/"), st, nil, map[int64]bool{42: true}, time.UTC, "test")
+	b.SetupMenus(context.Background())
+	if calls != 1 {
+		t.Fatalf("calls after a network error: %d, want 1", calls)
+	}
+}
