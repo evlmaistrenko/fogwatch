@@ -60,8 +60,8 @@ Environment variables (see [.env.example](.env.example)):
               date: added within FRESH_DAYS)
     /codes    all active codes, one message with pages and copy buttons:
               expiring soonest, then recent, then older without a date;
-              admins see the whole database (⏳ pending, 🚫 rejected,
-              ⌛ expired, 🗑 removed)
+              admins see the whole database with status filter buttons
+              (🎁 active, ⏳ pending, 🚫 rejected, ⌛ expired, 🗑 removed)
     /lang     ru / en / same as Telegram (default)
 
 Admin (shown in the admin's menu):

@@ -218,7 +218,7 @@ func (b *Bot) onMessage(ctx context.Context, m *telegram.Message) {
 	case "/help":
 		b.reply(ctx, chat, b.help(lang, isAdmin), nil)
 	case "/codes":
-		text, kb, err := b.listPage(lang, 0, isAdmin)
+		text, kb, err := b.listPage(lang, "a", 0, isAdmin)
 		if err != nil {
 			b.dbFail(ctx, chat, lang, err)
 			return
@@ -361,15 +361,64 @@ func (b *Bot) listCodes(admin bool) ([]store.Code, error) {
 	return codes, nil
 }
 
+// listFilters are the admin filter buttons of /codes: key, label, groups.
+// "a" (everything) is the default.
+var listFilters = []struct {
+	key, label string
+	groups     []int
+}{
+	{"a", "all_btn", nil},
+	{"g", "🎁", []int{grpFresh, grpStale}},
+	{"p", "⏳", []int{grpPending}},
+	{"r", "🚫", []int{grpRejected}},
+	{"e", "⌛", []int{grpExpired}},
+	{"d", "🗑", []int{grpRemoved}},
+}
+
 // listPage renders page (0-based, clamped) of listCodes: one message edited
-// in place by the ◀️/▶️ buttons ("p:<page>"), with a copy button per code.
-func (b *Bot) listPage(lang string, page int, admin bool) (string, *telegram.Keyboard, error) {
-	codes, err := b.listCodes(admin)
-	if err != nil || len(codes) == 0 {
+// in place by the buttons. callback_data is "p:<filter><page>"; "p:-" is the
+// page counter. Admins get a filter row; for users filter is ignored.
+func (b *Bot) listPage(lang, filter string, page int, admin bool) (string, *telegram.Keyboard, error) {
+	all, err := b.listCodes(admin)
+	if err != nil || len(all) == 0 {
 		return i18n.T(lang, "no_codes"), nil, err
 	}
 	today := b.today()
-	pages := (len(codes) + listPage - 1) / listPage
+	kb := &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{}}
+	codes := all
+	if admin {
+		var row []telegram.Button
+		for _, f := range listFilters {
+			var in []store.Code
+			for _, c := range all {
+				if f.groups == nil || slices.Contains(f.groups, b.group(c, today)) {
+					in = append(in, c)
+				}
+			}
+			if f.key == filter {
+				codes = in
+			} else if len(in) == 0 && f.groups != nil {
+				continue
+			}
+			label := f.label
+			if f.groups == nil {
+				label = i18n.T(lang, label)
+			}
+			label += " " + strconv.Itoa(len(in))
+			if f.key == filter {
+				label = "• " + label
+			}
+			row = append(row, telegram.Button{Text: label, CallbackData: "p:" + f.key + "0"})
+		}
+		kb.InlineKeyboard = append(kb.InlineKeyboard, row[:min(3, len(row))])
+		if len(row) > 3 {
+			kb.InlineKeyboard = append(kb.InlineKeyboard, row[3:])
+		}
+	} else {
+		filter = "a"
+	}
+
+	pages := max(1, (len(codes)+listPage-1)/listPage)
 	page = max(0, min(page, pages-1))
 	codes = codes[page*listPage : min((page+1)*listPage, len(codes))]
 
@@ -379,7 +428,9 @@ func (b *Bot) listPage(lang string, page int, admin bool) (string, *telegram.Key
 	}
 	var sb strings.Builder
 	sb.WriteString(i18n.T(lang, header))
-	kb := &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{}}
+	if len(codes) == 0 {
+		sb.WriteString("\n" + i18n.T(lang, "list_empty"))
+	}
 	for i, c := range codes {
 		sb.WriteString("\n" + grpIcons[b.group(c, today)] + " " + codeLine(lang, c))
 		btn := telegram.Button{Text: "📋 " + c.Code, CopyText: &telegram.CopyText{Text: c.Code}}
@@ -393,11 +444,11 @@ func (b *Bot) listPage(lang string, page int, admin bool) (string, *telegram.Key
 	if pages > 1 {
 		nav := []telegram.Button{}
 		if page > 0 {
-			nav = append(nav, telegram.Button{Text: "◀️", CallbackData: "p:" + strconv.Itoa(page-1)})
+			nav = append(nav, telegram.Button{Text: "◀️", CallbackData: "p:" + filter + strconv.Itoa(page-1)})
 		}
 		nav = append(nav, telegram.Button{Text: fmt.Sprintf("%d / %d", page+1, pages), CallbackData: "p:-"})
 		if page < pages-1 {
-			nav = append(nav, telegram.Button{Text: "▶️", CallbackData: "p:" + strconv.Itoa(page+1)})
+			nav = append(nav, telegram.Button{Text: "▶️", CallbackData: "p:" + filter + strconv.Itoa(page+1)})
 		}
 		kb.InlineKeyboard = append(kb.InlineKeyboard, nav)
 	}
@@ -438,11 +489,14 @@ func (b *Bot) onCallback(ctx context.Context, q *telegram.CallbackQuery) {
 		b.onModerate(ctx, q, kind == "ok", val)
 	case "p":
 		_ = b.tg.Answer(ctx, q.ID, "")
-		page, err := strconv.Atoi(val)
-		if err != nil || q.Message == nil {
+		if len(val) < 2 || q.Message == nil {
 			return // "p:-" is the page counter
 		}
-		text, kb, err := b.listPage(b.st.Lang(q.From.ID), page, b.admins[q.From.ID])
+		page, err := strconv.Atoi(val[1:])
+		if err != nil {
+			return
+		}
+		text, kb, err := b.listPage(b.st.Lang(q.From.ID), val[:1], page, b.admins[q.From.ID])
 		if err != nil {
 			log.Printf("db: %v", err)
 			return

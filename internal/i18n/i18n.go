@@ -11,13 +11,15 @@ var texts = map[string]map[string]string{
 		"help": "Присылаю промокоды Dead by Daylight, как только они появляются.\n\n" +
 			"Каждый код — отдельное сообщение с кнопкой 📋 для копирования. Отмечайте коды средствами самого Telegram: удалите активированный, поставьте реакцию, закрепите нужный и т. п.\n\n" +
 			"/codes — все активные коды, постранично: сначала свежие\n/lang — язык",
-		"admin_help": "\n\n<b>Админ</b>\nНайденные поиском коды сначала приходят только вам: ✅ публикует и рассылает, ❌ отклоняет.\n/pending — коды на модерации\n/codes у вас показывает все коды в базе: ⏳ модерация, 🚫 отклонён, ⌛ истёк, 🗑 удалён\n/add КОД [ГГГГ-ММ-ДД] [награда ru | награда en] — добавить и сразу разослать\n/del КОД — удалить\n/fetch — искать сейчас",
+		"admin_help": "\n\n<b>Админ</b>\nНайденные поиском коды сначала приходят только вам: ✅ публикует и рассылает, ❌ отклоняет.\n/pending — коды на модерации\n/codes у вас показывает все коды в базе с фильтром по статусу: 🎁 активен, ⏳ модерация, 🚫 отклонён, ⌛ истёк, 🗑 удалён\n/add КОД [ГГГГ-ММ-ДД] [награда ru | награда en] — добавить и сразу разослать\n/del КОД — удалить\n/fetch — искать сейчас",
 		"version":    "\n\n<i>Версия %s</i>",
 		"all":        "📚 <b>Все коды в базе</b>",
 		"no_codes":   "Активных кодов сейчас нет. Пришлю, как появятся.",
 		"no_fresh":   "За последние %d дн. новых кодов не было. Все активные коды (%d): /codes",
 		"more_codes": "Старые коды без срока (добавлены больше %d дн. назад): %d шт. — /codes",
 		"list":       "📚 <b>Активные коды</b>",
+		"list_empty": "Таких кодов нет.",
+		"all_btn":    "Все",
 		"until":      "до %s",
 		"copy":       "Скопировать",
 		"pick_lang":  "Язык / Language",
@@ -56,13 +58,15 @@ var texts = map[string]map[string]string{
 		"help": "I send Dead by Daylight promo codes as soon as they appear.\n\n" +
 			"Each code is a separate message with a 📋 copy button. Keep track of codes with Telegram itself: delete redeemed ones, react, pin the ones you need, and so on.\n\n" +
 			"/codes — all active codes, page by page, recent first\n/lang — language",
-		"admin_help": "\n\n<b>Admin</b>\nCodes found by search come to you first: ✅ publishes and broadcasts, ❌ rejects.\n/pending — codes awaiting moderation\n/codes shows you all codes in the database: ⏳ pending, 🚫 rejected, ⌛ expired, 🗑 removed\n/add CODE [YYYY-MM-DD] [reward ru | reward en] — add and broadcast now\n/del CODE — remove\n/fetch — search now",
+		"admin_help": "\n\n<b>Admin</b>\nCodes found by search come to you first: ✅ publishes and broadcasts, ❌ rejects.\n/pending — codes awaiting moderation\n/codes shows you all codes in the database, filtered by status: 🎁 active, ⏳ pending, 🚫 rejected, ⌛ expired, 🗑 removed\n/add CODE [YYYY-MM-DD] [reward ru | reward en] — add and broadcast now\n/del CODE — remove\n/fetch — search now",
 		"version":    "\n\n<i>Version %s</i>",
 		"all":        "📚 <b>All codes in the database</b>",
 		"no_codes":   "No active codes right now. I'll send them when they appear.",
 		"no_fresh":   "No new codes in the last %d days. All active codes (%d): /codes",
 		"more_codes": "Older codes without an expiry date (added over %d days ago): %d — /codes",
 		"list":       "📚 <b>Active codes</b>",
+		"list_empty": "No such codes.",
+		"all_btn":    "All",
 		"until":      "until %s",
 		"copy":       "Copy",
 		"pick_lang":  "Язык / Language",

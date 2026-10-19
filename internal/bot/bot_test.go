@@ -274,7 +274,7 @@ func TestListPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := New(nil, st, nil, nil, time.UTC, "test")
-	if text, kb, err := b.listPage("en", 0, false); err != nil || kb != nil || !strings.Contains(text, "No active codes") {
+	if text, kb, err := b.listPage("en", "a", 0, false); err != nil || kb != nil || !strings.Contains(text, "No active codes") {
 		t.Fatalf("empty: %q %+v %v", text, kb, err)
 	}
 	start := time.Now().Add(-time.Hour)
@@ -282,7 +282,7 @@ func TestListPages(t *testing.T) {
 		st.Upsert(store.Code{Code: fmt.Sprintf("CODE%02d", i), Source: "admin", CreatedAt: start.Add(time.Duration(i) * time.Minute)})
 	}
 
-	text, kb, _ := b.listPage("en", 0, false)
+	text, kb, _ := b.listPage("en", "a", 0, false)
 	rows := kb.InlineKeyboard
 	if !strings.Contains(text, "CODE22") || strings.Contains(text, "CODE12") || len(rows) != 6 {
 		t.Fatalf("page 1: %q %+v", text, rows)
@@ -290,18 +290,18 @@ func TestListPages(t *testing.T) {
 	if c := rows[0][0]; c.CopyText == nil || c.CopyText.Text != "CODE22" || len(rows[0]) != 2 {
 		t.Fatalf("copy buttons: %+v", rows[0])
 	}
-	if nav := rows[5]; len(nav) != 2 || nav[0].Text != "1 / 3" || nav[1].CallbackData != "p:1" {
+	if nav := rows[5]; len(nav) != 2 || nav[0].Text != "1 / 3" || nav[1].CallbackData != "p:a1" {
 		t.Fatalf("nav 1: %+v", nav)
 	}
 
 	// Last page, also when asked for one past it (codes removed meanwhile).
 	for _, p := range []int{2, 9} {
-		text, kb, _ = b.listPage("en", p, false)
+		text, kb, _ = b.listPage("en", "a", p, false)
 		rows = kb.InlineKeyboard
 		if !strings.Contains(text, "CODE00") || strings.Count(text, "🎁") != 3 || len(rows) != 3 {
 			t.Fatalf("page %d: %q %+v", p, text, rows)
 		}
-		if nav := rows[2]; len(nav) != 2 || nav[0].CallbackData != "p:1" || nav[1].Text != "3 / 3" {
+		if nav := rows[2]; len(nav) != 2 || nav[0].CallbackData != "p:a1" || nav[1].Text != "3 / 3" {
 			t.Fatalf("nav %d: %+v", p, nav)
 		}
 	}
@@ -350,7 +350,18 @@ func TestListOrder(t *testing.T) {
 	if got := order(true); got != "SOON1 LATER NEW01 PEND1 REJ01 STALE GONE1 DEL01" {
 		t.Fatalf("admin: %s", got)
 	}
-	text, _, _ := b.listPage("en", 0, true)
+	text, kb, _ := b.listPage("en", "a", 0, true)
+	if f := kb.InlineKeyboard[0]; f[0].Text != "• All 8" || f[1].Text != "🎁 4" || f[1].CallbackData != "p:g0" {
+		t.Fatalf("filters: %+v", kb.InlineKeyboard[:2])
+	}
+	if text, kb, _ := b.listPage("en", "r", 0, true); !strings.Contains(text, "REJ01") || strings.Count(text, "<code>") != 1 ||
+		kb.InlineKeyboard[1][0].Text != "• 🚫 1" {
+		t.Fatalf("rejected filter: %q %+v", text, kb.InlineKeyboard)
+	}
+	// Users can't filter: a forged callback shows active codes.
+	if text, _, _ := b.listPage("en", "r", 0, false); strings.Contains(text, "REJ01") {
+		t.Fatalf("user filter: %q", text)
+	}
 	for _, want := range []string{"⏳ <code>PEND1", "🚫 <code>REJ01", "🎁 <code>STALE", "⌛ <code>GONE1", "🗑 <code>DEL01"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("admin page lacks %q: %s", want, text)
