@@ -63,7 +63,7 @@ Admin (shown in the admin's menu):
 
     /pending                          resend moderation cards
     /all                              everything in the database (⏳ pending, ⌛ expired)
-    /add CODE [YYYY-MM-DD] [reward]   publish + broadcast now (or just send the code)
+    /add CODE [YYYY-MM-DD] [reward]   publish + broadcast now
     /del CODE                         tombstone: search won't re-add it
     /fetch                            search now
 

@@ -202,11 +202,6 @@ func (b *Bot) onMessage(ctx context.Context, m *telegram.Message) {
 			go b.adminFetch(ctx, chat, lang)
 		}
 	default:
-		// Admin shortcut: a message that is just a code adds it.
-		if isAdmin && len(f) == 1 && codeRe.MatchString(normCode(f[0])) {
-			b.adminAdd(ctx, chat, lang, f)
-			return
-		}
 		b.reply(ctx, chat, b.help(lang, isAdmin), nil)
 	}
 }
