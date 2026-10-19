@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/evlmaistrenko/fogwatch/compare/v1.1.1...v1.1.2) (2026-10-19)
+
+
+### Bug Fixes
+
+* refresh chosen-language menus when commands change ([#26](https://github.com/evlmaistrenko/fogwatch/issues/26)) ([4b0e429](https://github.com/evlmaistrenko/fogwatch/commit/4b0e4295fc9615a62db9aff661c023c813b88a7c))
+
 ## [1.1.1](https://github.com/evlmaistrenko/fogwatch/compare/v1.1.0...v1.1.1) (2026-10-19)
 
 
