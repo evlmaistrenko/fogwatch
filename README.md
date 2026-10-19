@@ -52,15 +52,16 @@ Environment variables (see [.env.example](.env.example)):
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | any Responses API, e.g. `https://openrouter.ai/api/v1` |
 | `OPENAI_MODEL` | `gpt-5-mini` | `openai/gpt-5-mini` on OpenRouter |
 | `TZ` | `UTC` | "today" for code expiry, search schedule, log timestamps |
-| `FRESH_DAYS` | `7` | `/start` and `/codes` skip codes without an expiry date added longer ago; `0` = show all |
+| `FRESH_DAYS` | `7` | `/start` skips codes without an expiry date added longer ago, `/codes` lists them after the fresh ones; `0` = all are fresh |
 
 ## Commands
 
-    /start    help + recent codes
-    /codes    recent active codes, one message each (without an expiry
+    /start    help + recent codes, one message each (without an expiry
               date: added within FRESH_DAYS)
-    /list     all active codes, one message with pages and copy buttons;
-              admins see everything in the database (⏳ pending, ⌛ expired)
+    /codes    all active codes, one message with pages and copy buttons:
+              expiring soonest, then recent, then older without a date;
+              admins see the whole database (⏳ pending, 🚫 rejected,
+              ⌛ expired, 🗑 removed)
     /lang     ru / en / same as Telegram (default)
 
 Admin (shown in the admin's menu):

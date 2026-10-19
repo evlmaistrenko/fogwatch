@@ -24,7 +24,7 @@ var (
 	dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 )
 
-const listPage = 10 // codes per /list page; copy buttons go two per row
+const listPage = 10 // codes per /codes page; copy buttons go two per row
 
 type Bot struct {
 	tg      *telegram.Client
@@ -35,8 +35,8 @@ type Bot struct {
 	version string
 	fetchMu sync.Mutex
 
-	// FreshFor limits /start and /codes to codes without an expiry date that
-	// were added within this long; older ones are only in /list. 0 = no limit.
+	// FreshFor: codes without an expiry date added within this long are
+	// "fresh": sent on /start and listed first in /codes. 0 = all are fresh.
 	FreshFor time.Duration
 
 	// Scheduled-search health; touched only by ScheduledFetch, which the
@@ -214,12 +214,10 @@ func (b *Bot) onMessage(ctx context.Context, m *telegram.Message) {
 	switch cmd {
 	case "/start":
 		b.reply(ctx, chat, b.help(lang, isAdmin), nil)
-		b.cmdCodes(ctx, chat, lang)
+		b.sendFresh(ctx, chat, lang)
 	case "/help":
 		b.reply(ctx, chat, b.help(lang, isAdmin), nil)
 	case "/codes":
-		b.cmdCodes(ctx, chat, lang)
-	case "/list":
 		text, kb, err := b.listPage(lang, 0, isAdmin)
 		if err != nil {
 			b.dbFail(ctx, chat, lang, err)
@@ -259,16 +257,22 @@ func (b *Bot) help(lang string, isAdmin bool) string {
 	return t + i18n.T(lang, "version", html.EscapeString(b.version))
 }
 
-// cmdCodes sends active codes, leaving out the ones without an expiry date
-// added more than FreshFor ago: those would otherwise pile up in every
-// /start and /codes. /list has them all.
-func (b *Bot) cmdCodes(ctx context.Context, chat int64, lang string) {
+// sendFresh sends active codes one per message, leaving out the ones without
+// an expiry date added more than FreshFor ago: those would otherwise pile up
+// on every /start. /codes lists them all.
+func (b *Bot) sendFresh(ctx context.Context, chat int64, lang string) {
 	codes, err := b.st.Active(b.today())
 	if err != nil {
 		b.dbFail(ctx, chat, lang, err)
 		return
 	}
-	fresh, stale := b.splitStale(codes)
+	var fresh []store.Code
+	for _, c := range codes {
+		if b.fresh(c) {
+			fresh = append(fresh, c)
+		}
+	}
+	stale := len(codes) - len(fresh)
 	switch {
 	case len(codes) == 0:
 		b.reply(ctx, chat, i18n.T(lang, "no_codes"), nil)
@@ -286,30 +290,46 @@ func (b *Bot) cmdCodes(ctx context.Context, chat int64, lang string) {
 	}
 }
 
-// splitStale drops codes without an expiry date older than FreshFor and
-// counts them.
-func (b *Bot) splitStale(codes []store.Code) (fresh []store.Code, stale int) {
-	if b.FreshFor <= 0 {
-		return codes, 0
-	}
-	since := time.Now().Add(-b.FreshFor)
-	for _, c := range codes {
-		if c.Expires == "" && c.CreatedAt.Before(since) {
-			stale++
-			continue
-		}
-		fresh = append(fresh, c)
-	}
-	return fresh, stale
+// fresh: has an expiry date or was added within FreshFor.
+func (b *Bot) fresh(c store.Code) bool {
+	return b.FreshFor <= 0 || c.Expires != "" || c.CreatedAt.After(time.Now().Add(-b.FreshFor))
 }
 
 func (b *Bot) freshDays() int { return max(1, int(b.FreshFor.Round(24*time.Hour)/(24*time.Hour))) }
 
-// listPage renders page (0-based, clamped) of the codes, newest first: one
-// message edited in place by the ◀️/▶️ buttons ("p:<page>"), with a copy
-// button per code. Users get the active codes; admins everything in the
-// database, pending and expired included.
-func (b *Bot) listPage(lang string, page int, admin bool) (string, *telegram.Keyboard, error) {
+// Groups of the /codes list, in order. Users see only the active ones.
+const (
+	grpFresh    = iota // with an expiry date (soonest first) or fresh
+	grpPending         // admins only, as are the rest but grpStale
+	grpRejected        //
+	grpStale           // active, no expiry date, not fresh
+	grpExpired         //
+	grpRemoved         //
+)
+
+var grpIcons = [...]string{"🎁", "⏳", "🚫", "🎁", "⌛", "🗑"}
+
+func (b *Bot) group(c store.Code, today string) int {
+	switch {
+	case c.Status == store.StatusPending:
+		return grpPending
+	case c.Status == store.StatusRejected:
+		return grpRejected
+	case c.Status == store.StatusRemoved:
+		return grpRemoved
+	case !c.Active(today):
+		return grpExpired
+	case !b.fresh(c):
+		return grpStale
+	}
+	return grpFresh
+}
+
+// listCodes is what /codes lists, in order: fresh codes (expiring soonest,
+// then the ones without a date, newest first), then for admins pending and
+// rejected ones, then older codes without a date, then for admins expired
+// and removed ones. Within a group newest first.
+func (b *Bot) listCodes(admin bool) ([]store.Code, error) {
 	today := b.today()
 	var codes []store.Code
 	var err error
@@ -319,9 +339,36 @@ func (b *Bot) listPage(lang string, page int, admin bool) (string, *telegram.Key
 		codes, err = b.st.Active(today)
 		slices.Reverse(codes)
 	}
+	if err != nil {
+		return nil, err
+	}
+	slices.SortStableFunc(codes, func(x, y store.Code) int {
+		gx, gy := b.group(x, today), b.group(y, today)
+		if gx != gy {
+			return gx - gy
+		}
+		if gx == grpFresh && x.Expires != y.Expires {
+			switch {
+			case x.Expires == "":
+				return 1
+			case y.Expires == "":
+				return -1
+			}
+			return strings.Compare(x.Expires, y.Expires)
+		}
+		return 0 // keep newest first
+	})
+	return codes, nil
+}
+
+// listPage renders page (0-based, clamped) of listCodes: one message edited
+// in place by the ◀️/▶️ buttons ("p:<page>"), with a copy button per code.
+func (b *Bot) listPage(lang string, page int, admin bool) (string, *telegram.Keyboard, error) {
+	codes, err := b.listCodes(admin)
 	if err != nil || len(codes) == 0 {
 		return i18n.T(lang, "no_codes"), nil, err
 	}
+	today := b.today()
 	pages := (len(codes) + listPage - 1) / listPage
 	page = max(0, min(page, pages-1))
 	codes = codes[page*listPage : min((page+1)*listPage, len(codes))]
@@ -334,14 +381,7 @@ func (b *Bot) listPage(lang string, page int, admin bool) (string, *telegram.Key
 	sb.WriteString(i18n.T(lang, header))
 	kb := &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{}}
 	for i, c := range codes {
-		icon := "🎁"
-		switch {
-		case c.Status == store.StatusPending:
-			icon = "⏳"
-		case !c.Active(today):
-			icon = "⌛"
-		}
-		sb.WriteString("\n" + icon + " " + codeLine(lang, c))
+		sb.WriteString("\n" + grpIcons[b.group(c, today)] + " " + codeLine(lang, c))
 		btn := telegram.Button{Text: "📋 " + c.Code, CopyText: &telegram.CopyText{Text: c.Code}}
 		if i%2 == 0 {
 			kb.InlineKeyboard = append(kb.InlineKeyboard, []telegram.Button{btn})
@@ -467,7 +507,7 @@ func (b *Bot) onModerate(ctx context.Context, q *telegram.CallbackQuery, approve
 		_ = b.tg.Answer(ctx, q.ID, i18n.T(lang, "no_access"))
 		return
 	}
-	to, verdict := store.StatusRemoved, "rejected"
+	to, verdict := store.StatusRejected, "rejected"
 	if approve {
 		to, verdict = store.StatusPublished, "approved"
 	}

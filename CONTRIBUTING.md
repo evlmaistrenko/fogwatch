@@ -83,9 +83,9 @@ menus). Tests sit next to the code as `*_test.go`.
 - Messages use `parse_mode: HTML`: escape every dynamic value with
   `html.EscapeString`.
 - `callback_data` ≤ 64 bytes. Prefixes in use: `l:` (language), `ok:`/`no:`
-  (moderation), `p:` (`/list` pages). Admin-only callbacks re-check `b.admins`.
+  (moderation), `p:` (`/codes` pages). Admin-only callbacks re-check `b.admins`.
 - One code per message with a `copy_text` button; users delete the message to
-  mark a code as used. No per-user code state — keep it that way. `/list` is
+  mark a code as used. No per-user code state — keep it that way. `/codes` is
   the one paged overview: a single message edited in place, a copy button per
   code.
 - Never log the bot token (`internal/telegram` strips URLs from
@@ -100,7 +100,8 @@ menus). Tests sit next to the code as `*_test.go`.
 - Scheduled search failures alert admins once (after 2 in a row) and once on
   recovery — never on every failed run.
 - Search results stay `pending` until an admin approves; admin-added codes are
-  published at once; `removed` is a tombstone that search can't undo.
+  published at once; `rejected` and `removed` are tombstones that search
+  can't undo.
 - LLM output is validated (code format, source URL, expiry), never trusted.
 
 ### Tests

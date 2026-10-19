@@ -10,14 +10,14 @@ var texts = map[string]map[string]string{
 	"ru": {
 		"help": "Присылаю промокоды Dead by Daylight, как только они появляются.\n\n" +
 			"Каждый код — отдельное сообщение с кнопкой 📋 для копирования. Отмечайте коды средствами самого Telegram: удалите активированный, поставьте реакцию, закрепите нужный и т. п.\n\n" +
-			"/codes — свежие коды\n/list — все активные коды, постранично\n/lang — язык",
-		"admin_help": "\n\n<b>Админ</b>\nНайденные поиском коды сначала приходят только вам: ✅ публикует и рассылает, ❌ отклоняет.\n/pending — коды на модерации\n/list у вас показывает все коды в базе (⏳ модерация, ⌛ истёк)\n/add КОД [ГГГГ-ММ-ДД] [награда ru | награда en] — добавить и сразу разослать\n/del КОД — удалить\n/fetch — искать сейчас",
+			"/codes — все активные коды, постранично: сначала свежие\n/lang — язык",
+		"admin_help": "\n\n<b>Админ</b>\nНайденные поиском коды сначала приходят только вам: ✅ публикует и рассылает, ❌ отклоняет.\n/pending — коды на модерации\n/codes у вас показывает все коды в базе: ⏳ модерация, 🚫 отклонён, ⌛ истёк, 🗑 удалён\n/add КОД [ГГГГ-ММ-ДД] [награда ru | награда en] — добавить и сразу разослать\n/del КОД — удалить\n/fetch — искать сейчас",
 		"version":    "\n\n<i>Версия %s</i>",
 		"all":        "📚 <b>Все коды в базе</b>",
 		"no_codes":   "Активных кодов сейчас нет. Пришлю, как появятся.",
-		"no_fresh":   "За последние %d дн. новых кодов не было. Все активные коды (%d): /list",
-		"more_codes": "Старые коды без срока (добавлены больше %d дн. назад): %d шт. — /list",
-		"list":       "📚 <b>Все активные коды</b>",
+		"no_fresh":   "За последние %d дн. новых кодов не было. Все активные коды (%d): /codes",
+		"more_codes": "Старые коды без срока (добавлены больше %d дн. назад): %d шт. — /codes",
+		"list":       "📚 <b>Активные коды</b>",
 		"until":      "до %s",
 		"copy":       "Скопировать",
 		"pick_lang":  "Язык / Language",
@@ -55,14 +55,14 @@ var texts = map[string]map[string]string{
 	"en": {
 		"help": "I send Dead by Daylight promo codes as soon as they appear.\n\n" +
 			"Each code is a separate message with a 📋 copy button. Keep track of codes with Telegram itself: delete redeemed ones, react, pin the ones you need, and so on.\n\n" +
-			"/codes — recent codes\n/list — all active codes, page by page\n/lang — language",
-		"admin_help": "\n\n<b>Admin</b>\nCodes found by search come to you first: ✅ publishes and broadcasts, ❌ rejects.\n/pending — codes awaiting moderation\n/list shows you all codes in the database (⏳ pending, ⌛ expired)\n/add CODE [YYYY-MM-DD] [reward ru | reward en] — add and broadcast now\n/del CODE — remove\n/fetch — search now",
+			"/codes — all active codes, page by page, recent first\n/lang — language",
+		"admin_help": "\n\n<b>Admin</b>\nCodes found by search come to you first: ✅ publishes and broadcasts, ❌ rejects.\n/pending — codes awaiting moderation\n/codes shows you all codes in the database: ⏳ pending, 🚫 rejected, ⌛ expired, 🗑 removed\n/add CODE [YYYY-MM-DD] [reward ru | reward en] — add and broadcast now\n/del CODE — remove\n/fetch — search now",
 		"version":    "\n\n<i>Version %s</i>",
 		"all":        "📚 <b>All codes in the database</b>",
 		"no_codes":   "No active codes right now. I'll send them when they appear.",
-		"no_fresh":   "No new codes in the last %d days. All active codes (%d): /list",
-		"more_codes": "Older codes without an expiry date (added over %d days ago): %d — /list",
-		"list":       "📚 <b>All active codes</b>",
+		"no_fresh":   "No new codes in the last %d days. All active codes (%d): /codes",
+		"more_codes": "Older codes without an expiry date (added over %d days ago): %d — /codes",
+		"list":       "📚 <b>Active codes</b>",
 		"until":      "until %s",
 		"copy":       "Copy",
 		"pick_lang":  "Язык / Language",
@@ -125,14 +125,12 @@ func Detect(code string) string {
 
 var Commands = map[string][]telegram.Cmd{
 	"ru": {
-		{Command: "codes", Description: "Свежие коды"},
-		{Command: "list", Description: "Все активные коды"},
+		{Command: "codes", Description: "Активные коды"},
 		{Command: "lang", Description: "Язык"},
 		{Command: "help", Description: "Помощь"},
 	},
 	"en": {
-		{Command: "codes", Description: "Recent codes"},
-		{Command: "list", Description: "All active codes"},
+		{Command: "codes", Description: "Active codes"},
 		{Command: "lang", Description: "Language"},
 		{Command: "help", Description: "Help"},
 	},

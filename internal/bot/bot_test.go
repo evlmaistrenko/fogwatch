@@ -198,7 +198,7 @@ func TestChatMenuFollowsChosenLang(t *testing.T) {
 	ctx := context.Background()
 
 	b.chatMenu(ctx, 7, "en")
-	if len(calls) != 1 || calls[0] != (call{"setMyCommands", "", "Recent codes", 7}) {
+	if len(calls) != 1 || calls[0] != (call{"setMyCommands", "", "Active codes", 7}) {
 		t.Fatalf("user en: %+v", calls)
 	}
 	calls = nil
@@ -214,7 +214,7 @@ func TestChatMenuFollowsChosenLang(t *testing.T) {
 		t.Fatalf("admin en: %+v", calls)
 	}
 	for _, c := range calls {
-		if c.chat != 42 || c.first != "Recent codes" {
+		if c.chat != 42 || c.first != "Active codes" {
 			t.Fatalf("admin en: %+v", calls)
 		}
 	}
@@ -245,8 +245,8 @@ func TestStaleCodesOnlyInList(t *testing.T) {
 	old := time.Now().Add(-30 * 24 * time.Hour)
 
 	st.Upsert(store.Code{Code: "OLD01", Source: "admin", CreatedAt: old})
-	b.cmdCodes(ctx, 7, "en")
-	if len(sent) != 1 || !strings.Contains(sent[0], "No new codes in the last 7 days. All active codes (1): /list") {
+	b.sendFresh(ctx, 7, "en")
+	if len(sent) != 1 || !strings.Contains(sent[0], "No new codes in the last 7 days. All active codes (1): /codes") {
 		t.Fatalf("only stale: %q", sent)
 	}
 
@@ -254,15 +254,15 @@ func TestStaleCodesOnlyInList(t *testing.T) {
 	st.Upsert(store.Code{Code: "OLD02", Source: "admin", Expires: "2099-01-01", CreatedAt: old})
 	st.Upsert(store.Code{Code: "NEW01", Source: "admin"})
 	sent = nil
-	b.cmdCodes(ctx, 7, "en")
+	b.sendFresh(ctx, 7, "en")
 	if len(sent) != 3 || !strings.Contains(sent[0], "OLD02") || !strings.Contains(sent[1], "NEW01") ||
-		!strings.HasSuffix(sent[2], "over 7 days ago): 1 — /list") {
+		!strings.HasSuffix(sent[2], "over 7 days ago): 1 — /codes") {
 		t.Fatalf("mixed: %q", sent)
 	}
 
 	b.FreshFor = 0
 	sent = nil
-	b.cmdCodes(ctx, 7, "en")
+	b.sendFresh(ctx, 7, "en")
 	if len(sent) != 3 || !strings.Contains(sent[0], "OLD01") {
 		t.Fatalf("no limit: %q", sent)
 	}
@@ -305,14 +305,55 @@ func TestListPages(t *testing.T) {
 			t.Fatalf("nav %d: %+v", p, nav)
 		}
 	}
-	// Admins also see pending and expired codes; users don't.
-	st.Upsert(store.Code{Code: "PEND1", Source: "ai"})
-	st.Upsert(store.Code{Code: "GONE1", Source: "admin", Expires: "2000-01-01"})
-	if text, _, _ := b.listPage("en", 0, false); strings.Contains(text, "PEND1") || strings.Contains(text, "GONE1") {
-		t.Fatalf("user sees pending/expired: %q", text)
+}
+
+func TestListOrder(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	text, _, _ = b.listPage("en", 0, true)
-	if !strings.Contains(text, "⏳ <code>PEND1</code>") || !strings.Contains(text, "⌛ <code>GONE1</code>") {
-		t.Fatalf("admin: %q", text)
+	b := New(nil, st, nil, nil, time.UTC, "test")
+	old := time.Now().Add(-30 * 24 * time.Hour)
+	add := func(code, source, expires string, created time.Time) {
+		t.Helper()
+		if _, err := st.Upsert(store.Code{Code: code, Source: source, Expires: expires, CreatedAt: created}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Insertion order is newest last, as in real life.
+	add("STALE", "admin", "", old)
+	add("GONE1", "admin", "2000-01-01", old)
+	add("LATER", "admin", "2099-12-31", old)
+	add("DEL01", "admin", "", old.Add(time.Hour))
+	st.Remove("DEL01")
+	add("REJ01", "ai", "", old.Add(2*time.Hour))
+	st.Moderate("REJ01", store.StatusRejected)
+	add("SOON1", "admin", "2099-01-01", time.Time{})
+	add("PEND1", "ai", "", time.Time{})
+	add("NEW01", "admin", "", time.Time{})
+
+	order := func(admin bool) string {
+		t.Helper()
+		codes, err := b.listCodes(admin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, c := range codes {
+			names = append(names, c.Code)
+		}
+		return strings.Join(names, " ")
+	}
+	if got := order(false); got != "SOON1 LATER NEW01 STALE" {
+		t.Fatalf("user: %s", got)
+	}
+	if got := order(true); got != "SOON1 LATER NEW01 PEND1 REJ01 STALE GONE1 DEL01" {
+		t.Fatalf("admin: %s", got)
+	}
+	text, _, _ := b.listPage("en", 0, true)
+	for _, want := range []string{"⏳ <code>PEND1", "🚫 <code>REJ01", "🎁 <code>STALE", "⌛ <code>GONE1", "🗑 <code>DEL01"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("admin page lacks %q: %s", want, text)
+		}
 	}
 }
