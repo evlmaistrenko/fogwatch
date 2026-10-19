@@ -259,3 +259,65 @@ func (s *Store) All() ([]Code, error) {
 	err := s.db.Order("created_at DESC").Find(&cs).Error
 	return cs, err
 }
+
+// ---------- stats ----------
+
+// Stats is the admin /stats overview. Published codes are split into active
+// and expired; Codes holds the stored status counts, so pending, rejected
+// and removed come from there.
+type Stats struct {
+	Users     int
+	NewUsers  int            // registered since the given time
+	UserLangs map[string]int // effective language -> users
+	Codes     map[string]int // status -> codes
+	Active    int            // published and not expired
+	Expired   int            // published, past their expiry date
+	NewCodes  int            // found or added since the given time
+	BySource  map[string]int // ai | admin -> codes
+}
+
+// TotalCodes counts codes of every status, tombstones included.
+func (st *Stats) TotalCodes() int {
+	n := 0
+	for _, v := range st.Codes {
+		n += v
+	}
+	return n
+}
+
+// Stats counts users and codes; "new" means created after since. Counted in
+// Go: both tables are small and SQLite time comparisons depend on how the
+// driver serialises time.Time.
+func (s *Store) Stats(today string, since time.Time) (Stats, error) {
+	st := Stats{UserLangs: map[string]int{}, Codes: map[string]int{}, BySource: map[string]int{}}
+	var us []User
+	if err := s.db.Find(&us).Error; err != nil {
+		return st, err
+	}
+	for _, u := range us {
+		st.Users++
+		st.UserLangs[u.Effective()]++
+		if u.CreatedAt.After(since) {
+			st.NewUsers++
+		}
+	}
+	var cs []Code
+	if err := s.db.Find(&cs).Error; err != nil {
+		return st, err
+	}
+	for _, c := range cs {
+		st.Codes[c.Status]++
+		st.BySource[c.Source]++
+		if c.CreatedAt.After(since) {
+			st.NewCodes++
+		}
+		if c.Status == StatusPublished {
+			if c.Active(today) {
+				st.Active++
+			} else {
+				st.Expired++
+			}
+		}
+	}
+	return st, nil
+}

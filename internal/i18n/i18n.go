@@ -11,7 +11,7 @@ var texts = map[string]map[string]string{
 		"help": "Присылаю промокоды Dead by Daylight, как только они появляются.\n\n" +
 			"Каждый код — отдельное сообщение с кнопкой 📋 для копирования. Отмечайте коды средствами самого Telegram: удалите активированный, поставьте реакцию, закрепите нужный и т. п.\n\n" +
 			"/codes — все активные коды, постранично: сначала свежие\n/lang — язык",
-		"admin_help": "\n\n<b>Админ</b>\nНайденные поиском коды сначала приходят только вам: ✅ публикует и рассылает, ❌ отклоняет.\n/pending — коды на модерации\n/codes у вас показывает все коды в базе с фильтром по статусу: 🎁 активен, ⏳ модерация, 🚫 отклонён, ⌛ истёк, 🗑 удалён\n/add КОД [ГГГГ-ММ-ДД] [награда ru | награда en] — добавить и сразу разослать\n/del КОД — удалить\n/fetch — искать сейчас",
+		"admin_help": "\n\n<b>Админ</b>\nНайденные поиском коды сначала приходят только вам: ✅ публикует и рассылает, ❌ отклоняет.\n/pending — коды на модерации\n/codes у вас показывает все коды в базе с фильтром по статусу: 🎁 активен, ⏳ модерация, 🚫 отклонён, ⌛ истёк, 🗑 удалён\n/add КОД [ГГГГ-ММ-ДД] [награда ru | награда en] — добавить и сразу разослать\n/del КОД — удалить\n/fetch — искать сейчас\n/stats — статистика",
 		"version":    "\n\n<i>Версия %s</i>",
 		"all":        "📚 <b>Все коды в базе</b>",
 		"no_codes":   "Активных кодов сейчас нет. Пришлю, как появятся.",
@@ -53,12 +53,26 @@ var texts = map[string]map[string]string{
 
 		"fetch_alert":     "⚠️ Поиск кодов не работает: %d неудачных попыток подряд. Подробности в логах.",
 		"fetch_recovered": "✅ Поиск кодов снова работает.",
+
+		"stats_title":       "📊 <b>Статистика</b>",
+		"stats_users":       "\n\n👥 <b>Пользователи: %d</b> (админов: %d)",
+		"stats_new":         "\nновых за %d дн.: %d",
+		"stats_langs":       "\nязык: русский %d, английский %d",
+		"stats_codes":       "\n\n🎟 <b>Коды: %d</b>",
+		"stats_published":   "\n✅ опубликовано: %d (🎁 активны %d, ⌛ истекли %d)",
+		"stats_pending":     "\n⏳ на модерации: %d",
+		"stats_rejected":    "\n🚫 отклонено: %d",
+		"stats_removed":     "\n🗑 удалено: %d",
+		"stats_sources":     "\nисточник: поиск %d, админ %d",
+		"stats_search_none": "\n\n🔍 Поиск после запуска бота ещё не выполнялся.",
+		"stats_search_ok":   "\n\n🔍 Последний поиск: %s, успешно.",
+		"stats_search_err":  "\n\n🔍 Последний поиск: %s, с ошибкой (подробности в логах).",
 	},
 	"en": {
 		"help": "I send Dead by Daylight promo codes as soon as they appear.\n\n" +
 			"Each code is a separate message with a 📋 copy button. Keep track of codes with Telegram itself: delete redeemed ones, react, pin the ones you need, and so on.\n\n" +
 			"/codes — all active codes, page by page, recent first\n/lang — language",
-		"admin_help": "\n\n<b>Admin</b>\nCodes found by search come to you first: ✅ publishes and broadcasts, ❌ rejects.\n/pending — codes awaiting moderation\n/codes shows you all codes in the database, filtered by status: 🎁 active, ⏳ pending, 🚫 rejected, ⌛ expired, 🗑 removed\n/add CODE [YYYY-MM-DD] [reward ru | reward en] — add and broadcast now\n/del CODE — remove\n/fetch — search now",
+		"admin_help": "\n\n<b>Admin</b>\nCodes found by search come to you first: ✅ publishes and broadcasts, ❌ rejects.\n/pending — codes awaiting moderation\n/codes shows you all codes in the database, filtered by status: 🎁 active, ⏳ pending, 🚫 rejected, ⌛ expired, 🗑 removed\n/add CODE [YYYY-MM-DD] [reward ru | reward en] — add and broadcast now\n/del CODE — remove\n/fetch — search now\n/stats — statistics",
 		"version":    "\n\n<i>Version %s</i>",
 		"all":        "📚 <b>All codes in the database</b>",
 		"no_codes":   "No active codes right now. I'll send them when they appear.",
@@ -100,6 +114,20 @@ var texts = map[string]map[string]string{
 
 		"fetch_alert":     "⚠️ Code search is failing: %d attempts in a row. Details are in the logs.",
 		"fetch_recovered": "✅ Code search works again.",
+
+		"stats_title":       "📊 <b>Statistics</b>",
+		"stats_users":       "\n\n👥 <b>Users: %d</b> (admins: %d)",
+		"stats_new":         "\nnew in %d days: %d",
+		"stats_langs":       "\nlanguage: Russian %d, English %d",
+		"stats_codes":       "\n\n🎟 <b>Codes: %d</b>",
+		"stats_published":   "\n✅ published: %d (🎁 active %d, ⌛ expired %d)",
+		"stats_pending":     "\n⏳ pending: %d",
+		"stats_rejected":    "\n🚫 rejected: %d",
+		"stats_removed":     "\n🗑 removed: %d",
+		"stats_sources":     "\nsource: search %d, admin %d",
+		"stats_search_none": "\n\n🔍 No search since the bot started.",
+		"stats_search_ok":   "\n\n🔍 Last search: %s, succeeded.",
+		"stats_search_err":  "\n\n🔍 Last search: %s, failed (details are in the logs).",
 	},
 }
 
@@ -147,11 +175,13 @@ var AdminCommands = map[string][]telegram.Cmd{
 		{Command: "add", Description: "Добавить код"},
 		{Command: "del", Description: "Удалить код"},
 		{Command: "fetch", Description: "Искать сейчас"},
+		{Command: "stats", Description: "Статистика"},
 	},
 	"en": {
 		{Command: "pending", Description: "Awaiting moderation"},
 		{Command: "add", Description: "Add code"},
 		{Command: "del", Description: "Remove code"},
 		{Command: "fetch", Description: "Search now"},
+		{Command: "stats", Description: "Statistics"},
 	},
 }
