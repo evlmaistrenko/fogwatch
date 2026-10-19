@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fogwatch/internal/ai"
@@ -39,6 +40,9 @@ type Bot struct {
 	// cron runs one at a time (SkipIfStillRunning).
 	fetchFails   int
 	fetchAlerted bool
+
+	maxOffline time.Duration // see the maxOffline const
+	menus      atomic.Int32  // menusUnset, menusSetting or menusSet
 }
 
 const (
@@ -47,10 +51,20 @@ const (
 	// Codes without an expiry date added within freshDays are "fresh": sent
 	// on /start and listed first in /codes.
 	freshDays = 7
+	// Run returns after Telegram has been unreachable this long, so the
+	// process exits and Docker (restart: unless-stopped) starts it afresh,
+	// which helps when the container's network doesn't recover by itself.
+	maxOffline = 5 * time.Minute
+)
+
+const (
+	menusUnset = iota
+	menusSetting
+	menusSet
 )
 
 func New(tg *telegram.Client, st *store.Store, llm *ai.Client, admins map[int64]bool, loc *time.Location, version string) *Bot {
-	return &Bot{tg: tg, st: st, ai: llm, admins: admins, loc: loc, version: version}
+	return &Bot{tg: tg, st: st, ai: llm, admins: admins, loc: loc, version: version, maxOffline: maxOffline}
 }
 
 // menuCodes are the client language codes menus are set for, "" being the
@@ -64,26 +78,57 @@ func menuLang(code string) string {
 	return i18n.Detect(code)
 }
 
-// SetupMenus sets the command menus: default for everyone, extended for
+// setupMenusAsync runs setupMenus in the background unless it is running or
+// has already succeeded; Run calls it at start and after every successful
+// poll, so menus that failed for lack of network are set once it's back.
+func (b *Bot) setupMenusAsync(ctx context.Context) {
+	if !b.menus.CompareAndSwap(menusUnset, menusSetting) {
+		return
+	}
+	go func() {
+		if b.setupMenus(ctx) {
+			b.menus.Store(menusSet)
+		} else {
+			b.menus.Store(menusUnset)
+		}
+	}()
+}
+
+// setupMenus sets the command menus: default for everyone, extended for
 // admins. An admin's chat menu fails with "chat not found" until they've
 // pressed /start once; /start sets it again, so no restart is needed.
-func (b *Bot) SetupMenus(ctx context.Context) {
+// On the first network error it stops, skipping the rest rather than
+// waiting out a dial timeout for each, and reports false to be retried.
+func (b *Bot) setupMenus(ctx context.Context) bool {
 	for _, code := range menuCodes {
 		if err := b.tg.SetCommands(ctx, i18n.Commands[menuLang(code)], code, 0); err != nil {
 			log.Printf("setMyCommands %q: %v", code, err)
+			if !isAPIError(err) {
+				return false
+			}
 		}
 	}
 	for id := range b.admins {
-		b.chatMenu(ctx, id, b.st.ChosenLang(id))
+		if ctx.Err() != nil || !b.chatMenu(ctx, id, b.st.ChosenLang(id)) {
+			return false
+		}
 	}
+	return true
+}
+
+// isAPIError tells a Telegram answer (bad request, chat not found, …) from
+// a failure to reach Telegram at all.
+func isAPIError(err error) bool {
+	var ae *telegram.APIError
+	return errors.As(err, &ae)
 }
 
 // chatMenu pins a user's menu to the language chosen in /lang; chosen ""
 // goes back to the client language. Telegram picks the menu by the client
 // language, but a chat-scoped one wins, with language_code before without:
 // so users get one menu without it, and admins (whose chat menus carry admin
-// commands) get every language variant.
-func (b *Bot) chatMenu(ctx context.Context, id int64, chosen string) {
+// commands) get every language variant. It returns false on a network error.
+func (b *Bot) chatMenu(ctx context.Context, id int64, chosen string) bool {
 	if !b.admins[id] {
 		var err error
 		if chosen == "" {
@@ -94,7 +139,7 @@ func (b *Bot) chatMenu(ctx context.Context, id int64, chosen string) {
 		if err != nil {
 			log.Printf("chat menu %d: %v", id, err)
 		}
-		return
+		return err == nil || isAPIError(err)
 	}
 	for _, code := range menuCodes {
 		lang := chosen
@@ -104,27 +149,51 @@ func (b *Bot) chatMenu(ctx context.Context, id int64, chosen string) {
 		all := append(append([]telegram.Cmd{}, i18n.Commands[lang]...), i18n.AdminCommands[lang]...)
 		if err := b.tg.SetCommands(ctx, all, code, id); err != nil {
 			log.Printf("setMyCommands admin %d %q: %v", id, code, err)
+			if !isAPIError(err) {
+				return false
+			}
 		}
 	}
+	return true
 }
 
-// Run long-polls Telegram and handles updates until ctx is cancelled.
-func (b *Bot) Run(ctx context.Context) {
+// Run long-polls Telegram and handles updates until ctx is cancelled (nil)
+// or Telegram has stayed unreachable for maxOffline (an error).
+func (b *Bot) Run(ctx context.Context) error {
 	offset := 0
+	var failingSince time.Time
+	b.setupMenusAsync(ctx)
 	for ctx.Err() == nil {
 		ups, err := b.tg.Updates(ctx, offset)
 		if err != nil {
-			if ctx.Err() == nil {
-				log.Printf("getUpdates: %v", err)
-				time.Sleep(3 * time.Second)
+			if ctx.Err() != nil {
+				break
+			}
+			log.Printf("getUpdates: %v", err)
+			if isAPIError(err) { // Telegram answered: the network is fine
+				failingSince = time.Time{}
+			} else {
+				if failingSince.IsZero() {
+					failingSince = time.Now()
+				}
+				if time.Since(failingSince) >= b.maxOffline {
+					return fmt.Errorf("telegram unreachable for %s, giving up", b.maxOffline)
+				}
+			}
+			select {
+			case <-ctx.Done():
+			case <-time.After(3 * time.Second):
 			}
 			continue
 		}
+		failingSince = time.Time{}
+		b.setupMenusAsync(ctx)
 		for _, u := range ups {
 			offset = u.UpdateID + 1
 			b.Handle(ctx, u)
 		}
 	}
+	return nil
 }
 
 func (b *Bot) today() string { return time.Now().In(b.loc).Format(time.DateOnly) }
