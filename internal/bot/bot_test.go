@@ -259,13 +259,6 @@ func TestStaleCodesOnlyInList(t *testing.T) {
 		!strings.HasSuffix(sent[2], "over 7 days ago): 1 — /codes") {
 		t.Fatalf("mixed: %q", sent)
 	}
-
-	b.FreshFor = 0
-	sent = nil
-	b.sendFresh(ctx, 7, "en")
-	if len(sent) != 3 || !strings.Contains(sent[0], "OLD01") {
-		t.Fatalf("no limit: %q", sent)
-	}
 }
 
 func TestListPages(t *testing.T) {

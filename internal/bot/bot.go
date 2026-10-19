@@ -35,10 +35,6 @@ type Bot struct {
 	version string
 	fetchMu sync.Mutex
 
-	// FreshFor: codes without an expiry date added within this long are
-	// "fresh": sent on /start and listed first in /codes. 0 = all are fresh.
-	FreshFor time.Duration
-
 	// Scheduled-search health; touched only by ScheduledFetch, which the
 	// cron runs one at a time (SkipIfStillRunning).
 	fetchFails   int
@@ -48,10 +44,13 @@ type Bot struct {
 const (
 	knownCodesInPrompt = 200 // most recent codes listed to the LLM as already known
 	fetchAlertAfter    = 2   // consecutive scheduled failures before admins hear about it
+	// Codes without an expiry date added within freshDays are "fresh": sent
+	// on /start and listed first in /codes.
+	freshDays = 7
 )
 
 func New(tg *telegram.Client, st *store.Store, llm *ai.Client, admins map[int64]bool, loc *time.Location, version string) *Bot {
-	return &Bot{tg: tg, st: st, ai: llm, admins: admins, loc: loc, version: version, FreshFor: 7 * 24 * time.Hour}
+	return &Bot{tg: tg, st: st, ai: llm, admins: admins, loc: loc, version: version}
 }
 
 // menuCodes are the client language codes menus are set for, "" being the
@@ -258,7 +257,7 @@ func (b *Bot) help(lang string, isAdmin bool) string {
 }
 
 // sendFresh sends active codes one per message, leaving out the ones without
-// an expiry date added more than FreshFor ago: those would otherwise pile up
+// an expiry date added more than freshDays ago: those would otherwise pile up
 // on every /start. /codes lists them all.
 func (b *Bot) sendFresh(ctx context.Context, chat int64, lang string) {
 	codes, err := b.st.Active(b.today())
@@ -278,7 +277,7 @@ func (b *Bot) sendFresh(ctx context.Context, chat int64, lang string) {
 		b.reply(ctx, chat, i18n.T(lang, "no_codes"), nil)
 		return
 	case len(fresh) == 0:
-		b.reply(ctx, chat, i18n.T(lang, "no_fresh", b.freshDays(), stale), nil)
+		b.reply(ctx, chat, i18n.T(lang, "no_fresh", freshDays, stale), nil)
 		return
 	}
 	if err := b.sendCodes(ctx, chat, lang, "🎁", fresh); err != nil {
@@ -286,16 +285,14 @@ func (b *Bot) sendFresh(ctx context.Context, chat int64, lang string) {
 		return
 	}
 	if stale > 0 {
-		b.reply(ctx, chat, i18n.T(lang, "more_codes", b.freshDays(), stale), nil)
+		b.reply(ctx, chat, i18n.T(lang, "more_codes", freshDays, stale), nil)
 	}
 }
 
-// fresh: has an expiry date or was added within FreshFor.
+// fresh: has an expiry date or was added within freshDays.
 func (b *Bot) fresh(c store.Code) bool {
-	return b.FreshFor <= 0 || c.Expires != "" || c.CreatedAt.After(time.Now().Add(-b.FreshFor))
+	return c.Expires != "" || c.CreatedAt.After(time.Now().AddDate(0, 0, -freshDays))
 }
-
-func (b *Bot) freshDays() int { return max(1, int(b.FreshFor.Round(24*time.Hour)/(24*time.Hour))) }
 
 // Groups of the /codes list, in order. Users see only the active ones.
 const (
