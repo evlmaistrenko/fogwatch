@@ -142,7 +142,7 @@ menus). Tests sit next to the code as `*_test.go`.
 
 | Type | Use for | Release |
 |------|---------|---------|
-| `feat` | new user- or admin-visible functionality | minor (patch while 0.x) |
+| `feat` | new user- or admin-visible functionality | minor |
 | `fix` | bug fix | patch |
 | `perf` | performance improvement | patch |
 | `revert` | reverting an earlier commit | patch |
@@ -153,7 +153,7 @@ menus). Tests sit next to the code as `*_test.go`.
 | `build` | build, Dockerfile, Go/module versions | — |
 | `ci` | GitHub Actions, hooks | — |
 | `chore` | everything else (deps, tooling, housekeeping) | — |
-| any type + `!` | breaking change | major (minor while 0.x) |
+| any type + `!` | breaking change | major |
 
 "—" means: no release on its own and not shown in the changelog; it ships with
 the next release triggered by another commit. Also accepted locally (never
