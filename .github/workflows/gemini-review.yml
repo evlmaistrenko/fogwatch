@@ -22,8 +22,10 @@ concurrency:
 
 jobs:
   review:
+    # Temporarily off: remove `false &&` to turn the review back on.
     # Secrets aren't available to fork PRs; skip drafts until they're ready.
     if: >-
+      false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       !github.event.pull_request.draft
     runs-on: ubuntu-latest

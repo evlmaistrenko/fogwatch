@@ -128,7 +128,8 @@ menus). Tests sit next to the code as `*_test.go`.
   becomes the commit on `main` and drives versioning.
 - CI checks formatting, vet, tests, the Docker build and the PR title.
 - Gemini reviews each PR when it's opened or marked ready (comments only, not
-  blocking). Treat its comments as suggestions; resolve or reply to them.
+  blocking). Currently off (`false &&` in the job's `if:`). Treat its comments
+  as suggestions; resolve or reply to them.
 - Releases are automatic: release-please opens a release PR; merging it tags
   a version and publishes Docker images. Don't edit `CHANGELOG.md` or the
   release-please manifest by hand.
