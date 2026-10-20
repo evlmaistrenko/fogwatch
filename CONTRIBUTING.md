@@ -128,8 +128,8 @@ menus). Tests sit next to the code as `*_test.go`.
   becomes the commit on `main` and drives versioning.
 - CI checks formatting, vet, tests, the Docker build and the PR title.
 - Gemini reviews each PR when it's opened or marked ready (comments only, not
-  blocking), if the repository variable `GEMINI_REVIEW` is `true`; currently
-  off. Treat its comments as suggestions; resolve or reply to them.
+  blocking). Currently off (`false &&` in the job's `if:`). Treat its comments
+  as suggestions; resolve or reply to them.
 - Releases are automatic: release-please opens a release PR; merging it tags
   a version and publishes Docker images. Don't edit `CHANGELOG.md` or the
   release-please manifest by hand.
@@ -179,6 +179,6 @@ reach `main` with squash merge): `fixup! …`, `squash! …`, `Merge …`,
 
 Repository setup (once, for a fork or a new repo): variable
 `DOCKERHUB_USERNAME`, secret `DOCKERHUB_TOKEN` (Docker Hub access token,
-read/write); secret `GEMINI_API_KEY` (AI Studio), variable `GEMINI_REVIEW`
-(`true` turns the review on), optional variable `GEMINI_MODEL`; Settings → Actions → General → "Allow GitHub Actions to create
+read/write); secret `GEMINI_API_KEY` (AI Studio), optional variable
+`GEMINI_MODEL`; Settings → Actions → General → "Allow GitHub Actions to create
 and approve pull requests".
