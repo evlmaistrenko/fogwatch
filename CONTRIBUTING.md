@@ -21,7 +21,9 @@ This is the single source of project rules, for humans and AI agents alike.
    `/fetch` in the chat to trigger a search.
 
 VS Code will suggest the Go, Task and SQLite Viewer extensions
-(`.vscode/extensions.json`).
+(`.vscode/extensions.json`). To run `dev` and `test` at the same time, start
+them via "Tasks: Run Task" (`.vscode/tasks.json`): the Task extension's sidebar
+runs one task at a time.
 
 ## Commands
 
