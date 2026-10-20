@@ -6,7 +6,8 @@ name: Gemini review
 # The CLI reads GEMINI.md -> AGENTS.md -> CONTRIBUTING.md, so the review
 # follows the project rules.
 #
-# Setup: secret GEMINI_API_KEY (https://aistudio.google.com/apikey).
+# Setup: secret GEMINI_API_KEY (https://aistudio.google.com/apikey) and
+# variable GEMINI_REVIEW=true; without the variable the review is off.
 # Optional variable GEMINI_MODEL to override the default model.
 # Re-review after new pushes: Actions -> Gemini review -> Re-run, or
 # convert the PR to draft and back to "ready for review".
@@ -22,8 +23,10 @@ concurrency:
 
 jobs:
   review:
-    # Secrets aren't available to fork PRs; skip drafts until they're ready.
+    # Off unless GEMINI_REVIEW is 'true'. Secrets aren't available to fork
+    # PRs; skip drafts until they're ready.
     if: >-
+      vars.GEMINI_REVIEW == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       !github.event.pull_request.draft
     runs-on: ubuntu-latest
