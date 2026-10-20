@@ -21,7 +21,14 @@ This is the single source of project rules, for humans and AI agents alike.
    `/fetch` in the chat to trigger a search.
 
 VS Code will suggest the Go, Task and SQLite Viewer extensions
-(`.vscode/extensions.json`).
+(`.vscode/extensions.json`). The Task extension can only run one task at a
+time: it gives all Taskfile tasks the same VS Code id, so starting `test` while
+`dev` runs asks to terminate `dev`. This is a limitation of the extension, not
+of the project. To run tasks side by side, start the ones from
+`.vscode/tasks.json` instead: open the Command Palette (Ctrl+Shift+P,
+Cmd+Shift+P on macOS) → "Tasks: Run Task" → `dev`, `test`, `build` or `start`
+(not the ones under "taskfile"). Ctrl+Shift+B runs `build`, "Tasks: Run Test
+Task" runs `test`.
 
 ## Commands
 

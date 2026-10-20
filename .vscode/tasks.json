@@ -1,0 +1,45 @@
+{
+  // Run these from the Command Palette (Ctrl+Shift+P, Cmd+Shift+P on macOS):
+  // "Tasks: Run Task", or Ctrl+Shift+B / "Tasks: Run Test Task"; Ctrl+P and
+  // `task ` lists them too. Not from the Task extension's sidebar: it gives
+  // every Taskfile task the same id, so VS Code runs only one at a time and
+  // asks to stop `dev` before `test` can start. These tasks have their own ids
+  // and run side by side.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev",
+      "detail": "Run with hot reload (air)",
+      "type": "shell",
+      "command": "task dev",
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated" }
+    },
+    {
+      "label": "test",
+      "detail": "go vet + go test",
+      "type": "shell",
+      "command": "task test",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": "$go",
+      "presentation": { "panel": "dedicated" }
+    },
+    {
+      "label": "build",
+      "detail": "Build a static binary into bin/",
+      "type": "shell",
+      "command": "task build",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$go",
+      "presentation": { "panel": "dedicated" }
+    },
+    {
+      "label": "start",
+      "detail": "Build and run",
+      "type": "shell",
+      "command": "task start",
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated" }
+    }
+  ]
+}
