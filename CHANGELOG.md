@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/evlmaistrenko/fogwatch/compare/v1.1.2...v1.2.0) (2026-10-20)
+
+
+### Features
+
+* link source code repository in /help ([#30](https://github.com/evlmaistrenko/fogwatch/issues/30)) ([7ea8e03](https://github.com/evlmaistrenko/fogwatch/commit/7ea8e03e3d68683fe4f9ac674771720a64e99af4))
+
+
+### Bug Fixes
+
+* drop duplicate clipboard emoji from copy buttons ([#28](https://github.com/evlmaistrenko/fogwatch/issues/28)) ([837a4ee](https://github.com/evlmaistrenko/fogwatch/commit/837a4ee474fa6a4fd2fca55c48c9f6345d14c72c))
+
 ## [1.1.2](https://github.com/evlmaistrenko/fogwatch/compare/v1.1.1...v1.1.2) (2026-10-19)
 
 
