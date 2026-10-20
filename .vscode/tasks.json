@@ -1,9 +1,10 @@
 {
-  // Run these via "Tasks: Run Task" (or Ctrl+Shift+B / "Tasks: Run Test
-  // Task"), not from the Task extension's sidebar: the extension gives every
-  // Taskfile task the same id, so VS Code runs only one at a time and asks to
-  // stop `dev` before `test` can start. These tasks have their own ids and run
-  // side by side.
+  // Run these from the Command Palette (Ctrl+Shift+P, Cmd+Shift+P on macOS):
+  // "Tasks: Run Task", or Ctrl+Shift+B / "Tasks: Run Test Task"; Ctrl+P and
+  // `task ` lists them too. Not from the Task extension's sidebar: it gives
+  // every Taskfile task the same id, so VS Code runs only one at a time and
+  // asks to stop `dev` before `test` can start. These tasks have their own ids
+  // and run side by side.
   "version": "2.0.0",
   "tasks": [
     {

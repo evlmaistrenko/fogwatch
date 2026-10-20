@@ -25,9 +25,10 @@ VS Code will suggest the Go, Task and SQLite Viewer extensions
 time: it gives all Taskfile tasks the same VS Code id, so starting `test` while
 `dev` runs asks to terminate `dev`. This is a limitation of the extension, not
 of the project. To run tasks side by side, start the ones from
-`.vscode/tasks.json` instead: Command Palette → "Tasks: Run Task" → `dev`,
-`test`, `build` or `start` (not the ones under "taskfile"); Ctrl+Shift+B runs
-`build`, "Tasks: Run Test Task" runs `test`.
+`.vscode/tasks.json` instead: open the Command Palette (Ctrl+Shift+P,
+Cmd+Shift+P on macOS) → "Tasks: Run Task" → `dev`, `test`, `build` or `start`
+(not the ones under "taskfile"). Ctrl+Shift+B runs `build`, "Tasks: Run Test
+Task" runs `test`.
 
 ## Commands
 
