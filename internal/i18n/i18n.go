@@ -9,7 +9,7 @@ import (
 var texts = map[string]map[string]string{
 	"ru": {
 		"help": "Присылаю промокоды Dead by Daylight, как только они появляются.\n\n" +
-			"Каждый код — отдельное сообщение с кнопкой 📋 для копирования. Отмечайте коды средствами самого Telegram: удалите активированный, поставьте реакцию, закрепите нужный и т. п.\n\n" +
+			"Каждый код — отдельное сообщение с кнопкой копирования. Отмечайте коды средствами самого Telegram: удалите активированный, поставьте реакцию, закрепите нужный и т. п.\n\n" +
 			"/codes — все активные коды, постранично: сначала свежие\n/lang — язык",
 		"admin_help": "\n\n<b>Админ</b>\nНайденные поиском коды сначала приходят только вам: ✅ публикует и рассылает, ❌ отклоняет.\n/pending — коды на модерации\n/codes у вас показывает все коды в базе с фильтром по статусу: 🎁 активен, ⏳ модерация, 🚫 отклонён, ⌛ истёк, 🗑 удалён\n/add КОД [ГГГГ-ММ-ДД] [награда ru | награда en] — добавить и сразу разослать\n/del КОД — удалить\n/fetch — искать сейчас\n/stats — статистика",
 		"version":    "\n\n<i>Версия %s</i>",
@@ -67,7 +67,7 @@ var texts = map[string]map[string]string{
 	},
 	"en": {
 		"help": "I send Dead by Daylight promo codes as soon as they appear.\n\n" +
-			"Each code is a separate message with a 📋 copy button. Keep track of codes with Telegram itself: delete redeemed ones, react, pin the ones you need, and so on.\n\n" +
+			"Each code is a separate message with a copy button. Keep track of codes with Telegram itself: delete redeemed ones, react, pin the ones you need, and so on.\n\n" +
 			"/codes — all active codes, page by page, recent first\n/lang — language",
 		"admin_help": "\n\n<b>Admin</b>\nCodes found by search come to you first: ✅ publishes and broadcasts, ❌ rejects.\n/pending — codes awaiting moderation\n/codes shows you all codes in the database, filtered by status: 🎁 active, ⏳ pending, 🚫 rejected, ⌛ expired, 🗑 removed\n/add CODE [YYYY-MM-DD] [reward ru | reward en] — add and broadcast now\n/del CODE — remove\n/fetch — search now\n/stats — statistics",
 		"version":    "\n\n<i>Version %s</i>",

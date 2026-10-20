@@ -85,7 +85,7 @@ Admin (shown in the admin's menu):
   admins with ✅ Publish / ❌ Reject. Publish broadcasts it; reject keeps a
   tombstone so search won't bring it back. With several admins the first
   click wins. Admins must have pressed /start to receive cards.
-- A published code is sent once to every user, as its own message with a 📋
+- A published code is sent once to every user, as its own message with a
   copy button. No per-user state: users track codes with Telegram itself
   (delete redeemed ones, react, pin, …).
   Users who blocked the bot are removed on the next send.

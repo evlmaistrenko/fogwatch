@@ -265,7 +265,7 @@ func codeLine(lang string, c store.Code) string {
 // codeMsg is one code per message: delete the message once redeemed.
 func codeMsg(lang, icon string, c store.Code) (string, *telegram.Keyboard) {
 	return icon + " " + codeLine(lang, c), &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{{
-		{Text: "📋 " + i18n.T(lang, "copy"), CopyText: &telegram.CopyText{Text: c.Code}},
+		{Text: i18n.T(lang, "copy"), CopyText: &telegram.CopyText{Text: c.Code}},
 	}}}
 }
 
@@ -545,7 +545,7 @@ func (b *Bot) listPage(lang, filter string, page int, admin bool) (string, *tele
 	}
 	for i, c := range codes {
 		sb.WriteString("\n" + grpIcons[b.group(c, today)] + " " + codeLine(lang, c))
-		btn := telegram.Button{Text: "📋 " + c.Code, CopyText: &telegram.CopyText{Text: c.Code}}
+		btn := telegram.Button{Text: c.Code, CopyText: &telegram.CopyText{Text: c.Code}}
 		if i%2 == 0 {
 			kb.InlineKeyboard = append(kb.InlineKeyboard, []telegram.Button{btn})
 		} else {
@@ -630,7 +630,7 @@ func modCard(lang string, c store.Code) (string, *telegram.Keyboard) {
 		text += "\n" + i18n.T(lang, "source") + ": " + html.EscapeString(c.URL)
 	}
 	return text, &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{
-		{{Text: "📋 " + i18n.T(lang, "copy"), CopyText: &telegram.CopyText{Text: c.Code}}},
+		{{Text: i18n.T(lang, "copy"), CopyText: &telegram.CopyText{Text: c.Code}}},
 		{
 			{Text: i18n.T(lang, "btn_approve"), CallbackData: "ok:" + c.Code},
 			{Text: i18n.T(lang, "btn_reject"), CallbackData: "no:" + c.Code},
@@ -711,7 +711,7 @@ func (b *Bot) closeCard(ctx context.Context, m *telegram.Message, lang string, c
 		return
 	}
 	text, _ := modCard(lang, c)
-	kb := &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{{{Text: "📋 " + i18n.T(lang, "copy"), CopyText: &telegram.CopyText{Text: c.Code}}}}}
+	kb := &telegram.Keyboard{InlineKeyboard: [][]telegram.Button{{{Text: i18n.T(lang, "copy"), CopyText: &telegram.CopyText{Text: c.Code}}}}}
 	if err := b.tg.EditText(ctx, m.Chat.ID, m.MessageID, text+"\n\n"+i18n.T(lang, outcome), kb); err != nil {
 		log.Printf("edit: %v", err)
 	}
