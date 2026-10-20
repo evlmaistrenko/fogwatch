@@ -23,7 +23,7 @@ func TestCodeMsg(t *testing.T) {
 	if text != "🆕 <code>AAAA1</code> — ОК · до 2030-01-01" {
 		t.Fatalf("text: %s", text)
 	}
-	if b := kb.InlineKeyboard[0][0]; b.CopyText == nil || b.CopyText.Text != "AAAA1" || !strings.HasPrefix(b.Text, "📋") {
+	if b := kb.InlineKeyboard[0][0]; b.CopyText == nil || b.CopyText.Text != "AAAA1" || b.Text != "Скопировать" {
 		t.Fatalf("button: %+v", b)
 	}
 }
