@@ -134,10 +134,12 @@ func TestModerationSkipsAdmins(t *testing.T) {
 	}
 }
 
-func TestHelpShowsVersion(t *testing.T) {
+func TestHelpShowsVersionAndSource(t *testing.T) {
 	b := New(nil, nil, nil, nil, time.UTC, "1.2.3<x>")
 	for _, admin := range []bool{false, true} {
-		if h := b.help("en", admin); !strings.HasSuffix(h, "<i>Version 1.2.3&lt;x&gt;</i>") {
+		h := b.help("en", admin)
+		if !strings.Contains(h, "<i>Version 1.2.3&lt;x&gt;</i>\nSource code: ") ||
+			!strings.HasSuffix(h, "github.com/evlmaistrenko/fogwatch</a>") {
 			t.Fatalf("admin=%v: %q", admin, h)
 		}
 	}
