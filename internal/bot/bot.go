@@ -368,7 +368,7 @@ func (b *Bot) help(lang string, isAdmin bool) string {
 	if isAdmin {
 		t += i18n.T(lang, "admin_help")
 	}
-	return t + i18n.T(lang, "version", html.EscapeString(b.version))
+	return t + i18n.T(lang, "version", html.EscapeString(b.version)) + i18n.T(lang, "repo")
 }
 
 // sendFresh sends active codes one per message, leaving out the ones without
