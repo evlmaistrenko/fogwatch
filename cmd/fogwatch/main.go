@@ -78,7 +78,8 @@ func run() error {
 		version,
 	)
 
-	// Search every 3 hours. SkipIfStillRunning: a slow search never overlaps.
+	// Search every 3 hours, or 6 while searches succeed (see ScheduledFetch).
+	// SkipIfStillRunning: a slow search never overlaps.
 	c := cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger)))
 	if _, err := c.AddFunc("0 */3 * * *", func() { b.ScheduledFetch(ctx) }); err != nil {
 		log.Fatal(err)

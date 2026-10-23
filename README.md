@@ -75,7 +75,10 @@ Admin (shown in the admin's menu):
 
 ## Behaviour
 
-- Search runs every 3 hours (00:00, 03:00, … in `TZ`), never on start. The
+- Search is checked every 3 hours (00:00, 03:00, … in `TZ`), never on start.
+  A check is skipped if a search (scheduled or `/fetch`) succeeded less than
+  3 hours ago, so normally the bot searches every 6 hours and retries 3 hours
+  after a failure. The time of the last success survives restarts. The
   prompt lists the 200 most recent known codes (any status) so the model looks
   for new ones only.
 - If 2 scheduled searches in a row fail, admins get one alert (the error

@@ -51,6 +51,10 @@ type Bot struct {
 const (
 	knownCodesInPrompt = 200 // most recent codes listed to the LLM as already known
 	fetchAlertAfter    = 2   // consecutive scheduled failures before admins hear about it
+	// A scheduled search is skipped if a search succeeded within fetchSkipWithin,
+	// so with the cron every 3 hours a healthy bot searches every 6 hours and a
+	// failed search is retried after 3.
+	fetchSkipWithin = 3 * time.Hour
 	// Codes without an expiry date added within freshDays are "fresh": sent
 	// on /start and listed first in /codes.
 	freshDays = 7
@@ -873,16 +877,35 @@ func (b *Bot) Fetch(ctx context.Context) (found, added int, err error) {
 		}
 	}
 	log.Printf("fetch: found %d, new %d", found, len(fresh))
+	if err := b.st.SetSetting(lastFetchKey, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		log.Printf("db: %v", err)
+	}
 	if len(fresh) > 0 {
 		b.askAdmins(ctx, fresh)
 	}
 	return found, len(fresh), nil
 }
 
-// ScheduledFetch is the cron job: Fetch plus admin alerts. Admins are told
-// once after fetchAlertAfter consecutive failures and once when it recovers,
-// so a long outage doesn't spam them every 3 hours.
+// lastFetchKey holds the end time of the last successful search (RFC 3339),
+// kept in the DB so a restart doesn't trigger an extra search.
+const lastFetchKey = "last_fetch_ok"
+
+// recentFetch reports whether a search (scheduled or /fetch) succeeded
+// within fetchSkipWithin.
+func (b *Bot) recentFetch() bool {
+	t, err := time.Parse(time.RFC3339, b.st.Setting(lastFetchKey))
+	return err == nil && time.Since(t) < fetchSkipWithin
+}
+
+// ScheduledFetch is the cron job: Fetch plus admin alerts. It skips the run
+// if a search succeeded recently. Admins are told once after fetchAlertAfter
+// consecutive failures and once when it recovers, so a long outage doesn't
+// spam them every 3 hours.
 func (b *Bot) ScheduledFetch(ctx context.Context) {
+	if b.recentFetch() {
+		log.Printf("fetch: skipped, last search succeeded less than %v ago", fetchSkipWithin)
+		return
+	}
 	_, _, err := b.Fetch(ctx)
 	switch {
 	case errors.Is(err, errBusy):
