@@ -78,10 +78,60 @@ func TestScheduledFetchAlerts(t *testing.T) {
 	}
 	broken = false
 	b.ScheduledFetch(ctx) // recovered: one notice
-	b.ScheduledFetch(ctx) // still fine: nothing
+	old := time.Now().Add(-fetchSkipWithin).Format(time.RFC3339)
+	st.SetSetting(lastFetchKey, old) // as if the next tick came 3 hours later
+	b.ScheduledFetch(ctx)            // still fine: nothing
 	if len(sent) != 2 || !strings.Contains(sent[1], "works again") {
 		t.Fatalf("recovery: %q", sent)
 	}
+}
+
+func TestScheduledFetchSkipsAfterSuccess(t *testing.T) {
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ok":true,"result":{}}`))
+	}))
+	defer tg.Close()
+	var calls atomic.Int32
+	broken := false
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if broken {
+			http.Error(w, "upstream down", http.StatusBadGateway)
+			return
+		}
+		w.Write([]byte(`{"output":[{"type":"message","content":[{"type":"output_text","text":"{\"codes\":[]}"}]}]}`))
+	}))
+	defer llm.Close()
+
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := New(telegram.NewAt(tg.URL+"/"), st, ai.New(llm.URL, "k", "m"), nil, time.UTC, "test")
+	ctx := context.Background()
+	ago := func(d time.Duration) { st.SetSetting(lastFetchKey, time.Now().Add(-d).Format(time.RFC3339)) }
+	run := func(want int32, msg string) {
+		t.Helper()
+		before := calls.Load()
+		b.ScheduledFetch(ctx)
+		if got := calls.Load() - before; got != want {
+			t.Fatalf("%s: %d LLM calls, want %d", msg, got, want)
+		}
+	}
+
+	run(1, "never searched")
+	run(0, "just succeeded")
+	ago(fetchSkipWithin - time.Minute)
+	run(0, "succeeded 3 hours ago, search took a minute")
+	ago(fetchSkipWithin)
+	broken = true
+	run(1, "6 hours since success")
+	run(1, "previous search failed")
+	broken = false
+	if _, _, err := b.Fetch(ctx); err != nil { // admin /fetch
+		t.Fatal(err)
+	}
+	run(0, "after a successful /fetch")
 }
 
 func TestRecent(t *testing.T) {
