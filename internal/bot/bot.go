@@ -54,6 +54,10 @@ const (
 	// Codes without an expiry date added within freshDays are "fresh": sent
 	// on /start and listed first in /codes.
 	freshDays = 7
+	// Search results without an expiry date are kept only if announced
+	// within undatedMaxAgeDays: aggregator sites list dead codes as active
+	// for months.
+	undatedMaxAgeDays = 14
 	// Run returns after Telegram has been unreachable this long, so the
 	// process exits and Docker (restart: unless-stopped) starts it afresh,
 	// which helps when the container's network doesn't recover by itself.
@@ -247,6 +251,16 @@ func validDate(s string) bool {
 	}
 	_, err := time.Parse(time.DateOnly, s)
 	return err == nil
+}
+
+// recent: published is a date within days before today (YYYY-MM-DD both).
+// A date after today is the LLM's mistake and doesn't count.
+func recent(published, today string, days int) bool {
+	if !validDate(published) || published > today {
+		return false
+	}
+	t, _ := time.Parse(time.DateOnly, today)
+	return published >= t.AddDate(0, 0, -days).Format(time.DateOnly)
 }
 
 // ---------- rendering ----------
@@ -824,7 +838,7 @@ func (b *Bot) Fetch(ctx context.Context) (found, added int, err error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	res, err := b.ai.Fetch(ctx, today, known)
+	res, err := b.ai.Fetch(ctx, today, undatedMaxAgeDays, known)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -845,6 +859,8 @@ func (b *Bot) Fetch(ctx context.Context) (found, added int, err error) {
 				continue
 			}
 			c.Expires = f.Expires
+		} else if !recent(f.Published, today, undatedMaxAgeDays) {
+			continue // no expiry and not known to be new: likely long dead
 		}
 		found++
 		isNew, err := b.st.Upsert(c)

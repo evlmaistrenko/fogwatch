@@ -110,6 +110,8 @@ menus). Tests sit next to the code as `*_test.go`.
   published at once; `rejected` and `removed` are tombstones that search
   can't undo.
 - LLM output is validated (code format, source URL, expiry), never trusted.
+  Codes without an expiry date are kept only if announced in the last
+  `undatedMaxAgeDays` days.
 
 ### Tests
 - SQLite in `t.TempDir()`, HTTP via `httptest`; no real network calls.

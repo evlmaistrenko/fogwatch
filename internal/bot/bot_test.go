@@ -84,6 +84,59 @@ func TestScheduledFetchAlerts(t *testing.T) {
 	}
 }
 
+func TestRecent(t *testing.T) {
+	for _, c := range []struct {
+		published string
+		want      bool
+	}{
+		{"2026-10-23", true},
+		{"2026-10-09", true}, // exactly 14 days
+		{"2026-10-08", false},
+		{"2026-10-24", false}, // future: LLM mistake
+		{"", false},
+		{"2026-13-01", false},
+	} {
+		if got := recent(c.published, "2026-10-23", 14); got != c.want {
+			t.Errorf("recent(%q) = %v", c.published, got)
+		}
+	}
+}
+
+func TestFetchSkipsOldUndated(t *testing.T) {
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ok":true,"result":{}}`))
+	}))
+	defer tg.Close()
+	today := time.Now().UTC().Format(time.DateOnly)
+	old := time.Now().UTC().AddDate(0, 0, -undatedMaxAgeDays-1).Format(time.DateOnly)
+	codes, _ := json.Marshal(map[string]any{"codes": []map[string]string{
+		{"code": "DATED1", "expires": "2099-01-01", "source_url": "https://x.test", "published": ""},
+		{"code": "NEWUND", "expires": "", "source_url": "https://x.test", "published": today},
+		{"code": "OLDUND", "expires": "", "source_url": "https://x.test", "published": old},
+		{"code": "NODATE", "expires": "", "source_url": "https://x.test", "published": ""},
+		{"code": "GONE01", "expires": "2000-01-01", "source_url": "https://x.test", "published": today},
+	}})
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"output": []any{map[string]any{
+			"type": "message", "content": []any{map[string]any{"type": "output_text", "text": string(codes)}},
+		}}})
+	}))
+	defer llm.Close()
+
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := New(telegram.NewAt(tg.URL+"/"), st, ai.New(llm.URL, "k", "m"), nil, time.UTC, "test")
+	if _, added, err := b.Fetch(context.Background()); err != nil || added != 2 {
+		t.Fatalf("added %d, %v", added, err)
+	}
+	got, _ := st.KnownCodes(10)
+	if strings.Join(got, ",") != "NEWUND,DATED1" && strings.Join(got, ",") != "DATED1,NEWUND" {
+		t.Fatalf("stored %v", got)
+	}
+}
+
 func TestModerationSkipsAdmins(t *testing.T) {
 	// Fake Telegram: collect method + chat_id + text.
 	type call struct {
