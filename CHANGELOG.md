@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0](https://github.com/evlmaistrenko/fogwatch/compare/v1.2.0...v1.3.0) (2026-10-23)
+
+
+### Features
+
+* skip scheduled search after a recent success ([#36](https://github.com/evlmaistrenko/fogwatch/issues/36)) ([2101377](https://github.com/evlmaistrenko/fogwatch/commit/2101377ead8cbd0326341a3821382fd8f65e287b))
+
+
+### Bug Fixes
+
+* skip undated codes that were not announced recently ([#34](https://github.com/evlmaistrenko/fogwatch/issues/34)) ([16579a9](https://github.com/evlmaistrenko/fogwatch/commit/16579a9cabe656ab995aa3fb1f9b4ec58c0db835))
+
 ## [1.2.0](https://github.com/evlmaistrenko/fogwatch/compare/v1.1.2...v1.2.0) (2026-10-20)
 
 
