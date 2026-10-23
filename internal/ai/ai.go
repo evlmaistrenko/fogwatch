@@ -39,6 +39,7 @@ type Found struct {
 	RewardEN  string `json:"reward_en"`
 	RewardRU  string `json:"reward_ru"`
 	Expires   string `json:"expires"`
+	Published string `json:"published"`
 	SourceURL string `json:"source_url"`
 }
 
@@ -52,12 +53,13 @@ var foundSchema = map[string]any{
 			"items": map[string]any{
 				"type":                 "object",
 				"additionalProperties": false,
-				"required":             []string{"code", "reward_en", "reward_ru", "expires", "source_url"},
+				"required":             []string{"code", "reward_en", "reward_ru", "expires", "published", "source_url"},
 				"properties": map[string]any{
 					"code":       map[string]any{"type": "string"},
 					"reward_en":  map[string]any{"type": "string"},
 					"reward_ru":  map[string]any{"type": "string"},
 					"expires":    map[string]any{"type": "string", "description": "YYYY-MM-DD or empty if unknown"},
+					"published":  map[string]any{"type": "string", "description": "YYYY-MM-DD the code was first announced, or empty if unknown"},
 					"source_url": map[string]any{"type": "string"},
 				},
 			},
@@ -71,8 +73,10 @@ Rules:
 - Include only codes a source explicitly lists as active/working (recently updated page, or a stated expiry date in the future).
 - Never invent, guess or complete codes. Copy them exactly as published.
 - Skip codes marked expired.
+- Codes without an expiry date: include only if first announced within the last %d days. Code aggregator pages often keep long-dead codes in their "active" list for months, so a recently updated page is not enough: find when the code itself was announced (official BHVR / Dead by Daylight post, patch notes, stream, or the date the page says it was added). Skip it if you can't find that date.
 - reward_en / reward_ru: very short reward description (e.g. "50 000 Bloodpoints" / "50 000 очков крови").
 - expires: YYYY-MM-DD if a source states it, otherwise "".
+- published: YYYY-MM-DD the code was first announced, otherwise "". Not the date a page was last updated.
 - source_url: the page where you saw the code.
 - Return an empty list if nothing reliable is found.`
 
@@ -83,9 +87,11 @@ const knownPrompt = `
 Already known codes, do not return them: %s.
 Return only codes that are not in this list; an empty list if there are none.`
 
-// Fetch searches for codes. known = codes already in the database (any status).
-func (a *Client) Fetch(ctx context.Context, today string, known []string) ([]Found, error) {
-	input := fmt.Sprintf(prompt, today)
+// Fetch searches for codes. known = codes already in the database (any status);
+// maxAgeDays = how recently a code without an expiry date must have been
+// announced.
+func (a *Client) Fetch(ctx context.Context, today string, maxAgeDays int, known []string) ([]Found, error) {
+	input := fmt.Sprintf(prompt, today, maxAgeDays)
 	if len(known) > 0 {
 		input += fmt.Sprintf(knownPrompt, strings.Join(known, ", "))
 	}

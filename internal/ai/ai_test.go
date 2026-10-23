@@ -28,8 +28,12 @@ func TestAIFetch(t *testing.T) {
 		if r.URL.Path != "/v1/responses" || r.Header.Get("Authorization") != "Bearer k" || req["model"] != "m" {
 			t.Errorf("bad request: %s %v", r.URL.Path, req["model"])
 		}
-		if in, _ := req["input"].(string); !strings.Contains(in, "do not return them: OLD01, OLD02.") {
+		in, _ := req["input"].(string)
+		if !strings.Contains(in, "do not return them: OLD01, OLD02.") {
 			t.Errorf("known codes missing from prompt: %q", in)
+		}
+		if !strings.Contains(in, "within the last 14 days") {
+			t.Errorf("max age missing from prompt: %q", in)
 		}
 		// Model wrapped the JSON in a code fence: must still parse.
 		w.Write([]byte(`{"status":"completed","output":[
@@ -39,7 +43,7 @@ func TestAIFetch(t *testing.T) {
 			`"}]}]}`))
 	}))
 	defer srv.Close()
-	got, err := New(srv.URL+"/v1", "k", "m").Fetch(context.Background(), "2026-10-09", []string{"OLD01", "OLD02"})
+	got, err := New(srv.URL+"/v1", "k", "m").Fetch(context.Background(), "2026-10-09", 14, []string{"OLD01", "OLD02"})
 	if err != nil || len(got) != 1 || got[0].Code != "ABCD1" || got[0].RewardRU != "ОК" {
 		t.Fatalf("got %+v, %v", got, err)
 	}
