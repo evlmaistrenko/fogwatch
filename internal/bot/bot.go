@@ -846,7 +846,8 @@ func (b *Bot) Fetch(ctx context.Context) (found, added int, err error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	var fresh []store.Code // new pending codes
+	var fresh []store.Code         // new pending codes
+	pages := map[string]*ai.Page{} // source pages by URL; nil if unreachable
 	for _, f := range res {
 		c := store.Code{
 			Code:     normCode(f.Code),
@@ -858,12 +859,30 @@ func (b *Bot) Fetch(ctx context.Context) (found, added int, err error) {
 		if !codeRe.MatchString(c.Code) || !strings.HasPrefix(c.URL, "http") {
 			continue // malformed or unsourced: likely hallucinated
 		}
-		if validDate(f.Expires) {
-			if f.Expires < today {
-				continue
+		if validDate(f.Expires) && f.Expires < today {
+			continue
+		}
+		// The model invents codes and dates: the code must be on the source
+		// page, and the page's own publish date beats the model's.
+		page, ok := pages[c.URL]
+		if !ok {
+			var perr error
+			if page, perr = ai.FetchPage(ctx, c.URL); perr != nil {
+				log.Printf("fetch: %s: %v", c.Code, perr)
 			}
+			pages[c.URL] = page
+		}
+		if page == nil || !page.Has(c.Code) {
+			log.Printf("fetch: %s: not on its source page, skipped", c.Code)
+			continue
+		}
+		published := f.Published
+		if page.Published != "" {
+			published = page.Published
+		}
+		if validDate(f.Expires) {
 			c.Expires = f.Expires
-		} else if !recent(f.Published, today, undatedMaxAgeDays) {
+		} else if !recent(published, today, undatedMaxAgeDays) {
 			continue // no expiry and not known to be new: likely long dead
 		}
 		found++

@@ -77,7 +77,8 @@ Rules:
 - reward_en / reward_ru: very short reward description (e.g. "50 000 Bloodpoints" / "50 000 очков крови").
 - expires: YYYY-MM-DD if a source states it, otherwise "".
 - published: YYYY-MM-DD the code was first announced, otherwise "". Not the date a page was last updated.
-- source_url: the page where you saw the code.
+- source_url: the exact page whose text contains the code (an article or post, not a site's home or store page). Codes that don't literally appear on their source_url are discarded.
+- A recent article that mentions an old code (recap, anniversary, roundup) doesn't make the code new: use the date the code itself was announced.
 - Return an empty list if nothing reliable is found.`
 
 // knownPrompt is appended when the database already has codes: the model

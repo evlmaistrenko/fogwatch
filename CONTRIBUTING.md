@@ -56,7 +56,7 @@ root:
 | `cmd/fogwatch` | env config, wiring, cron schedule |
 | `internal/bot` | update handling, commands, moderation, broadcast, fetch job, long-poll loop |
 | `internal/store` | GORM models and all DB access (SQLite) |
-| `internal/ai` | Responses API client (OpenAI / OpenRouter), web search, JSON schema |
+| `internal/ai` | Responses API client (OpenAI / OpenRouter), web search, JSON schema, source page checks |
 | `internal/telegram` | minimal hand-written Telegram Bot API client |
 | `internal/i18n` | all user-facing texts (ru, en) and command menus |
 
@@ -110,7 +110,9 @@ menus). Tests sit next to the code as `*_test.go`.
   published at once; `rejected` and `removed` are tombstones that search
   can't undo.
 - LLM output is validated (code format, source URL, expiry), never trusted.
-  Codes without an expiry date are kept only if announced in the last
+  Each code must appear on its source page, which the bot downloads; the
+  page's own publish date (meta or JSON-LD) wins over the model's. Codes
+  without an expiry date are kept only if announced in the last
   `undatedMaxAgeDays` days.
 
 ### Tests
