@@ -152,19 +152,38 @@ func TestRecent(t *testing.T) {
 	}
 }
 
-func TestFetchSkipsOldUndated(t *testing.T) {
+func TestFetchChecksSources(t *testing.T) {
 	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"ok":true,"result":{}}`))
 	}))
 	defer tg.Close()
 	today := time.Now().UTC().Format(time.DateOnly)
 	old := time.Now().UTC().AddDate(0, 0, -undatedMaxAgeDays-1).Format(time.DateOnly)
+	// Source pages: /list has no date of its own, /news is an old article
+	// (a recap re-listing an old code), /shop doesn't contain any code.
+	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/list":
+			w.Write([]byte(`<p>DATED1 NEWUND OLDUND NODATE GONE01</p><p>xNOTWORDx</p>`))
+		case "/news":
+			fmt.Fprintf(w, `<meta property="article:published_time" content="%sT10:00:00Z"><p>Use RECAP1</p>`, old)
+		case "/shop":
+			w.Write([]byte(`<div id="app"></div>`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer src.Close()
 	codes, _ := json.Marshal(map[string]any{"codes": []map[string]string{
-		{"code": "DATED1", "expires": "2099-01-01", "source_url": "https://x.test", "published": ""},
-		{"code": "NEWUND", "expires": "", "source_url": "https://x.test", "published": today},
-		{"code": "OLDUND", "expires": "", "source_url": "https://x.test", "published": old},
-		{"code": "NODATE", "expires": "", "source_url": "https://x.test", "published": ""},
-		{"code": "GONE01", "expires": "2000-01-01", "source_url": "https://x.test", "published": today},
+		{"code": "DATED1", "expires": "2099-01-01", "source_url": src.URL + "/list", "published": ""},
+		{"code": "NEWUND", "expires": "", "source_url": src.URL + "/list", "published": today},
+		{"code": "OLDUND", "expires": "", "source_url": src.URL + "/list", "published": old},
+		{"code": "NODATE", "expires": "", "source_url": src.URL + "/list", "published": ""},
+		{"code": "GONE01", "expires": "2000-01-01", "source_url": src.URL + "/list", "published": today},
+		{"code": "NOTWORD", "expires": "2099-01-01", "source_url": src.URL + "/list", "published": today},
+		{"code": "RECAP1", "expires": "", "source_url": src.URL + "/news", "published": today},
+		{"code": "SALE2026", "expires": "2099-01-01", "source_url": src.URL + "/shop", "published": today},
+		{"code": "LOST01", "expires": "2099-01-01", "source_url": src.URL + "/404", "published": today},
 	}})
 	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"output": []any{map[string]any{
