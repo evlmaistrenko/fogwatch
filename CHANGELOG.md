@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/evlmaistrenko/fogwatch/compare/v1.3.0...v1.3.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* drop codes missing from their source page ([#37](https://github.com/evlmaistrenko/fogwatch/issues/37)) ([01495a4](https://github.com/evlmaistrenko/fogwatch/commit/01495a4c42371aee2bcec0731a03445ddc945a25))
+
 ## [1.3.0](https://github.com/evlmaistrenko/fogwatch/compare/v1.2.0...v1.3.0) (2026-10-23)
 
 
